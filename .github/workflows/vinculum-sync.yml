@@ -1,1 +1,26 @@
-Add Vinculum API sync workflow
+name: Vinculum API Sync
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-vinculum-connection:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test API configuration
+        env:
+          VINCULUM_API_KEY: ${{ secrets.VINCULUM_API_KEY }}
+        run: |
+          if [ -z "$VINCULUM_API_KEY" ]; then
+            echo "VINCULUM_API_KEY secret is missing"
+            exit 1
+          fi
+
+          echo "VINCULUM_API_KEY is configured successfully."
+          echo "API secret will NOT be printed."
+
+      - name: Integration placeholder
+        run: |
+          echo "Vinculum integration configuration verified."
+          echo "Order API endpoint: /order/list"
