@@ -1,0 +1,3284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PW- Master Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#182230}
+.header{background:#151b23;color:#fff;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.title{display:flex;align-items:center;gap:14px}.logo{width:42px;height:42px;border-radius:10px;background:#f57c00;display:grid;place-items:center;font-weight:900}
+h1{font-size:22px;margin:0 0 4px}.sub{font-size:13px;color:#aeb9c6}
+.header-tools{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.header-search{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #d4dbe3;border-radius:8px;padding:0 10px;min-width:260px;height:40px}
+.header-search input{border:0;outline:0;background:transparent;color:#182230;min-width:0;width:100%;padding:8px 4px;font-size:14px}
+.header-search input::placeholder{color:#7b8794}
+.header-tool-icon{font-size:18px;color:#637181;line-height:1}
+.header-month{display:flex;align-items:center;gap:7px;height:40px;background:#242c36;border:1px solid #38414c;border-radius:8px;padding:0 8px 0 10px;color:#dce4ed}
+.header-month label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
+.header-month select{min-width:132px;height:34px;padding:6px 8px;border:1px solid #4a5563;border-radius:6px;background:#fff;color:#182230;font-size:13px}
+.actions{display:flex;gap:9px;align-items:center}button,.upload-label{border:1px solid #d4dbe3;background:#fff;padding:10px 14px;border-radius:8px;font-weight:700;cursor:pointer}
+.primary{background:#111;color:#fff;border-color:#111}.green{background:#eaf8ef;color:#18753b;border-color:#bce7ca}
+.wrap{max-width:1500px;margin:auto;padding:20px}.section-title{font-size:18px;font-weight:800;margin:0 0 14px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid #e3e8ee;border-radius:12px;padding:16px;box-shadow:0 2px 8px #0000000a}
+.kpi small{color:#6b7785;text-transform:uppercase;font-weight:700;font-size:11px}.kpi strong{display:block;font-size:27px;margin-top:8px}
+.filters{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:18px}
+.field{display:flex;flex-direction:column;gap:6px;font-size:11px;color:#657281;font-weight:700;text-transform:uppercase}
+select,input{min-width:145px;padding:10px;border:1px solid #ccd5df;border-radius:7px;background:#fff;font-size:14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}.card{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;overflow:hidden}
+.chart{height:260px;display:flex;align-items:end;gap:10px;padding:15px 5px 5px;border-top:1px solid #eef1f4}
+.bar{flex:1;min-width:18px;display:flex;flex-direction:column;justify-content:end;align-items:center;height:100%}
+.bar i{display:block;width:100%;max-width:42px;background:#2d8cff;border-radius:5px 5px 0 0;min-height:2px}
+.bar span{font-size:10px;color:#637181;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70px}
+.bar em{font-style:normal;font-size:10px;font-weight:700;margin-bottom:4px}
+.hbars .row{display:grid;grid-template-columns:140px 1fr 45px;gap:9px;align-items:center;margin:11px 0;font-size:12px}
+.track{height:11px;background:#edf1f5;border-radius:8px;overflow:hidden}.fill{height:100%;background:#2d8cff;border-radius:8px}
+.table-card{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;overflow:hidden}
+.table-wrap{overflow:auto;max-height:430px;border:1px solid #edf0f3;border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:9px 10px;border-bottom:1px solid #edf0f3;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#f7f9fb;z-index:1}
+.status{padding:4px 8px;border-radius:12px;background:#eef5ff;color:#1667b5;font-weight:700}
+.note{font-size:12px;color:#6d7a88;margin:6px 0 12px}#file{display:none}
+@media(max-width:1050px){.kpis{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.header-tools{width:100%;justify-content:flex-start}}
+@media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.wrap{padding:10px}.header{padding:14px;align-items:flex-start;flex-direction:column}.header-tools{width:100%;display:grid;grid-template-columns:1fr;gap:8px}.header-search{width:100%;min-width:0}.header-month{width:100%;justify-content:space-between}.header-month select{flex:1;min-width:0}.actions{width:100%;flex-wrap:wrap}.actions .upload-label,.actions button{flex:1;text-align:center}}
+
+.tabs{background:#151b23;padding:0 28px 12px;display:flex;gap:8px}
+.tab{border:1px solid #38414c;background:#242c36;color:#dce4ed;padding:10px 16px;border-radius:8px 8px 0 0;cursor:pointer;font-weight:700}
+.tab.active{background:#fff;color:#182230;border-color:#fff}
+.tab-panel{display:none}.active-panel{display:block}
+.sla-head{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px}
+.sla-head h2{margin:0 0 5px}.sla-target{background:#eef5ff;color:#175ea8;border-radius:20px;padding:10px 16px}
+.sla-kpis{grid-template-columns:repeat(5,1fr)}
+.sla-kpi-good{border-left:5px solid #20a05a}.sla-kpi-bad{border-left:5px solid #d64545}.sla-kpi-risk{border-left:5px solid #e2a400}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}.green-dot{background:#20a05a}.red-dot{background:#d64545}.amber-dot{background:#e2a400}
+.sla-rules{line-height:2.2;font-size:13px}
+.sla-good{color:#187a43;font-weight:700}.sla-bad{color:#c52f2f;font-weight:700}.sla-risk{color:#a46d00;font-weight:700}
+@media(max-width:1050px){.sla-kpis{grid-template-columns:repeat(3,1fr)}}
+
+
+.kpi-pct{display:block;margin-top:6px;font-size:13px;font-weight:700;color:#667788}
+.kpi-pct.good{color:#187a43}.kpi-pct.bad{color:#c52f2f}.kpi-pct.risk{color:#a46d00}
+.bar-pct{font-size:12px;font-weight:700;margin-left:8px;color:#667788}
+
+.picker-scope{width:100%}
+.picker-scope *{box-sizing:border-box}
+.picker-actions{display:flex;justify-content:flex-end;gap:10px;margin-bottom:12px}
+.picker-scope .hero{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.picker-scope .hero h2{margin:0 0 5px;font-size:22px}
+.picker-scope .hero p{margin:0;color:#66778a;font-size:13px}
+.picker-scope .pill{background:#eef5ff;color:#175ea8;border-radius:20px;padding:10px 16px;font-weight:700;white-space:nowrap}
+.picker-scope .picker-kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:18px}
+.picker-scope .picker-kpi{background:#fff;border:1px solid #e3e8ee;border-radius:12px;padding:16px;box-shadow:0 2px 8px #0000000a}
+.picker-scope .picker-kpi small{color:#6b7785;text-transform:uppercase;font-weight:700;font-size:11px}
+.picker-scope .picker-kpi strong{display:block;font-size:27px;margin-top:8px}
+.picker-scope .panel{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px;overflow:hidden}
+.picker-scope .panel h3{margin:0 0 14px;font-size:18px}
+.picker-scope .summary-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+.picker-scope .summary-card{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:15px}
+.picker-scope .summary-card small{display:block;color:#6b7785;text-transform:uppercase;font-weight:700;font-size:11px}
+.picker-scope .summary-card strong{display:block;font-size:24px;margin-top:7px}
+.coverage-strip{background:#eef5ff;color:#175ea8;border:1px solid #d9e8fb;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;margin:0 0 16px}
+@media(max-width:1200px){.picker-scope .summary-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:650px){.picker-scope .summary-grid{grid-template-columns:repeat(2,1fr)}}
+
+.picker-scope .filters{background:#fff;border:0;padding:0;display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:0}
+.picker-scope .filters>div{display:flex;flex-direction:column;gap:6px;font-size:11px;color:#657281;font-weight:700;text-transform:uppercase}
+.picker-scope .filters select,.picker-scope .filters input{min-width:145px;padding:10px;border:1px solid #ccd5df;border-radius:7px;background:#fff;font-size:14px}
+.picker-scope .table-wrap{overflow:auto;max-height:430px;border:1px solid #edf0f3;border-radius:8px}
+.picker-scope table{border-collapse:collapse;width:100%;font-size:12px;min-width:1050px}
+.picker-scope th,.picker-scope td{padding:9px 10px;border-bottom:1px solid #edf0f3;text-align:right;white-space:nowrap}
+.picker-scope th{position:sticky;top:0;background:#f7f9fb;z-index:1}
+.picker-scope th:first-child,.picker-scope td:first-child{text-align:left}
+.picker-scope .group{background:#eef5ff!important;color:#175ea8;font-weight:800;text-align:center!important}
+.picker-scope .note{font-size:12px;color:#6d7a88;margin:6px 0 12px}
+@media(max-width:1200px){
+  .picker-scope .picker-kpis{grid-template-columns:repeat(4,1fr)}
+}
+@media(max-width:1050px){
+  .picker-scope .picker-kpis{grid-template-columns:repeat(3,1fr)}
+  .picker-scope .hero{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:650px){
+  .picker-scope .picker-kpis{grid-template-columns:repeat(2,1fr)}
+  .picker-scope .picker-actions{flex-direction:column;align-items:stretch}
+  .picker-scope .picker-actions>*{width:100%;text-align:center}
+}
+
+.offroll-scope{width:100%}
+.offroll-scope *{box-sizing:border-box}
+.offroll-actions{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:18px}
+.offroll-actions h2{margin:0 0 5px;font-size:22px}
+.offroll-actions p{margin:0;color:#66778a;font-size:13px}
+.offroll-actions button{white-space:nowrap}
+.offroll-kpis{grid-template-columns:repeat(7,1fr)}
+.offroll-kpi-good{border-left:5px solid #20a05a}
+.offroll-kpi-risk{border-left:5px solid #e2a400}
+.offroll-kpi-bad{border-left:5px solid #d64545}
+.offroll-scope .table-wrap{max-height:520px}
+.offroll-scope table{min-width:1100px}
+.offroll-scope th,.offroll-scope td{text-align:left}
+.offroll-scope th.sticky-left{position:sticky;left:0;z-index:3;background:#f7f9fb}
+.offroll-status-p{font-weight:700;color:#187a43}
+.offroll-status-n{font-weight:700;color:#1667b5}
+.offroll-status-hd{font-weight:700;color:#a46d00}
+.offroll-status-l{font-weight:700;color:#c52f2f}
+.offroll-status-a{font-weight:700;color:#c52f2f}
+@media(max-width:1200px){.offroll-kpis{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:650px){
+  .offroll-kpis{grid-template-columns:repeat(2,1fr)}
+  .offroll-actions{align-items:flex-start;flex-direction:column}
+  .offroll-actions button{width:100%}
+}
+
+
+/* ===== Offroll Attendance View / Employee Login ===== */
+.offroll-view-scope{width:100%}
+.offroll-view-head{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:18px}
+.offroll-view-head h2{margin:0 0 5px;font-size:22px}
+.offroll-view-head p{margin:0;color:#66778a;font-size:13px}
+.offroll-login-card{max-width:520px;margin:28px auto;background:#fff;border:1px solid #e1e6eb;border-radius:14px;padding:24px;box-shadow:0 3px 12px #0000000a}
+.offroll-login-card h3{margin:0 0 8px;font-size:20px}
+.offroll-login-card .login-note{font-size:12px;color:#6d7a88;margin:0 0 18px;line-height:1.5}
+.offroll-login-form{display:grid;gap:13px}
+.offroll-login-form label{display:flex;flex-direction:column;gap:6px;font-size:11px;color:#657281;font-weight:700;text-transform:uppercase}
+.offroll-login-form input{width:100%;min-width:0}
+.offroll-login-form button{width:100%;margin-top:3px}
+.offroll-login-error{display:none;background:#fff1f1;color:#b42323;border:1px solid #f2c4c4;border-radius:8px;padding:10px;font-size:12px;font-weight:700}
+.offroll-login-error.show{display:block}
+.offroll-view-private{display:none}
+.offroll-view-private.show{display:block}
+.offroll-view-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.offroll-view-kpi{background:#fff;border:1px solid #e3e8ee;border-radius:12px;padding:16px}
+.offroll-view-kpi small{color:#6b7785;text-transform:uppercase;font-weight:700;font-size:11px}
+.offroll-view-kpi strong{display:block;font-size:24px;margin-top:8px}
+.offroll-view-status-p{color:#187a43;font-weight:800}
+.offroll-view-status-n{color:#1667b5;font-weight:800}
+.offroll-view-status-hd{color:#a46d00;font-weight:800}
+.offroll-view-status-l{color:#c52f2f;font-weight:800}
+.offroll-view-status-a{color:#c52f2f;font-weight:800}
+.offroll-view-employee{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px}
+.offroll-view-employee-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.offroll-view-employee-item{background:#f7f9fb;border-radius:8px;padding:10px}
+.offroll-view-employee-item small{display:block;color:#6b7785;font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:5px}
+.offroll-view-employee-item b{font-size:14px}
+.offroll-view-actions{display:flex;gap:8px;align-items:center}
+.offroll-view-actions button{white-space:nowrap}
+.offroll-view-table .table-wrap{max-height:520px}
+.offroll-view-table table{min-width:760px}
+.offroll-view-table th,.offroll-view-table td{text-align:left}
+.offroll-view-empty{padding:16px;background:#f7f9fb;border:1px dashed #d4dbe3;border-radius:8px;color:#687686;font-size:13px}
+@media(max-width:900px){
+  .offroll-view-kpis{grid-template-columns:repeat(2,1fr)}
+  .offroll-view-employee-grid{grid-template-columns:repeat(2,1fr)}
+  .offroll-view-head{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:650px){
+  .offroll-view-kpis{grid-template-columns:1fr 1fr}
+  .offroll-view-employee-grid{grid-template-columns:1fr}
+  .offroll-view-actions{width:100%}
+  .offroll-view-actions button{flex:1}
+}
+
+
+/* ===== B2C Dashboard ===== */
+.b2c-scope{width:100%}
+.b2c-head{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:18px}
+.b2c-head h2{margin:0 0 5px;font-size:22px}
+.b2c-head p{margin:0;color:#66778a;font-size:13px}
+.b2c-summary{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:18px;margin-bottom:16px}
+.b2c-summary h3{margin:0 0 5px;font-size:18px}
+.b2c-summary .note{margin-bottom:14px}
+.b2c-table-wrap{overflow:auto;border:1px solid #edf0f3;border-radius:8px}
+.b2c-table{border-collapse:collapse;width:100%;font-size:12px;min-width:820px}
+.b2c-table th,.b2c-table td{padding:10px;border-bottom:1px solid #edf0f3;text-align:right;white-space:nowrap}
+.b2c-table th:first-child,.b2c-table td:first-child{text-align:left}
+.b2c-table th{background:#f7f9fb;position:sticky;top:0;z-index:1}
+.b2c-channel{font-weight:800}
+.b2c-good{color:#187a43;font-weight:800}
+.b2c-bad{color:#c52f2f;font-weight:800}
+.b2c-risk{color:#a46d00;font-weight:800}
+.b2c-neutral{color:#1667b5;font-weight:800}
+.b2c-filterbar{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:16px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.b2c-filterbar .field{min-width:170px}
+.b2c-empty{padding:18px;background:#f7f9fb;border:1px dashed #d4dbe3;border-radius:8px;color:#687686;font-size:13px}
+@media(max-width:800px){
+  .b2c-head{align-items:flex-start;flex-direction:column}
+}
+
+
+/* B2C visual alignment fixes — B2B-style layout, no order-detail table */
+.sla-kpis .kpi{min-width:0}
+.sla-kpis .kpi-value{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#b2cStatusChart,#b2cChannelChart{min-height:220px}
+#b2cDayChart,#b2cSlaDayChart{min-height:260px}
+
+/* B2C B2B-style helpers */
+.good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}
+.mini-chart{height:220px;display:flex;align-items:flex-end;gap:6px;overflow:auto;padding:12px 4px 0}.mini-col{min-width:52px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px}.mini-bar{width:28px;min-height:4px;background:#1f6fb2;border-radius:4px 4px 0 0}.mini-value{font-size:10px;color:#4d5b68;white-space:nowrap}.mini-label{font-size:9px;color:#6c7783;white-space:nowrap}.empty{padding:18px;color:#6b7785}
+
+
+/* ===== Company login ===== */
+body.auth-locked > header, body.auth-locked > .tabs, body.auth-locked > main { display:none !important; }
+.auth-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#101720,#1b2735);display:flex;align-items:center;justify-content:center;padding:20px;z-index:99999}
+.auth-card{width:min(430px,100%);background:#fff;border-radius:18px;padding:32px;box-shadow:0 20px 70px rgba(0,0,0,.35);text-align:center}
+.auth-logo{width:54px;height:54px;border-radius:14px;background:#f57c00;color:#fff;display:grid;place-items:center;margin:0 auto 16px;font-size:22px;font-weight:900}
+.auth-card h2{margin:0 0 8px;font-size:24px}.company-login-form{display:flex;flex-direction:column;gap:10px}
+.auth-input{width:100%;height:46px;border:1px solid #d4dbe3;border-radius:9px;padding:0 12px;font-size:14px;outline:none;background:#fff;color:#182230}
+.auth-input:focus{border-color:#8aa7c2;box-shadow:0 0 0 3px #8aa7c222}
+.auth-card p{color:#667788;line-height:1.5;margin:0 0 20px}.auth-btn{width:100%;height:46px;border:1px solid #d4dbe3;border-radius:9px;background:#111;color:#fff;font-weight:800;cursor:pointer;font-size:14px}.auth-btn:disabled{opacity:.6;cursor:wait}.auth-msg{min-height:22px;margin-top:12px;font-size:12px;color:#b42318}.auth-user{display:flex;align-items:center;gap:8px;font-size:12px;color:#dce4ed;padding:0 8px}.auth-user button{padding:7px 9px;background:#242c36;color:#fff;border-color:#46515e}
+/* ===== Operations summary additions ===== */
+.ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:15px}.ops-card h3{margin:0 0 6px;font-size:15px}.ops-card .big{font-size:26px;font-weight:900;margin:7px 0}.ops-card .muted{font-size:12px;color:#687789}.ops-card table{width:100%;border-collapse:collapse;font-size:12px}.ops-card th,.ops-card td{padding:6px 4px;border-bottom:1px solid #edf0f3;text-align:left}.ops-card th{font-size:10px;text-transform:uppercase;color:#718091}.ops-search-result{margin-bottom:16px;background:#fff;border:1px solid #dce4eb;border-radius:12px;padding:16px}.ops-search-result.hidden{display:none}.ops-search-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.ops-search-grid .item{background:#f6f8fa;border-radius:8px;padding:9px}.ops-search-grid small{display:block;color:#6b7785;text-transform:uppercase;font-weight:700;font-size:10px}.ops-search-grid strong{display:block;margin-top:4px;font-size:14px}.kpi.kpi-clickable{cursor:pointer;transition:.15s}.kpi.kpi-clickable:hover{transform:translateY(-1px);box-shadow:0 5px 15px #00000012}.kpi.kpi-active{outline:2px solid #f57c00;outline-offset:1px}
+@media(max-width:900px){.ops-summary{grid-template-columns:1fr}.ops-search-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.ops-search-grid{grid-template-columns:1fr}}
+
+
+.search-summary-card{cursor:default}
+.search-summary-controls{display:flex;gap:7px;margin:8px 0 9px;align-items:center}
+.summary-search-input{flex:1;min-width:0;height:34px;border:1px solid #cfd8e3;border-radius:7px;padding:0 9px;font-size:12px;outline:none;background:#fff;color:#17212b}
+.summary-search-input:focus{border-color:#5b8def;box-shadow:0 0 0 2px #5b8def22}
+.summary-search-btn,.summary-search-clear{height:34px;border-radius:7px;padding:0 10px;font-size:12px;font-weight:700;cursor:pointer}
+.summary-search-btn{border:1px solid #111;background:#111;color:#fff}
+.summary-search-clear{border:1px solid #cfd8e3;background:#fff;color:#25313d}
+.search-summary-result{display:none;margin-top:8px;padding:8px;border-radius:7px;background:#f6f8fb;font-size:12px;line-height:1.45}
+.search-summary-result.show{display:block}
+.search-hit-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #e4e9ef;padding:4px 0}
+.search-hit-row:last-child{border-bottom:0}
+.search-hit-label{font-weight:700;color:#5a6876}
+.search-hit-value{color:#17212b;text-align:right;word-break:break-word}
+.search-empty{color:#c62828;font-weight:700}
+
+</style>
+</head>
+<body class="auth-locked">
+<div id="companyAuthOverlay" class="auth-overlay" style="display:flex;">
+  <div class="auth-card">
+    <div class="auth-logo">V</div>
+    <h2>PW- Master Dashboard</h2>
+    <p>Company login required.<br>Only authorised <b>@pw.live</b> accounts can access this dashboard.</p>
+    <form id="companyLoginForm" class="company-login-form">
+      <input id="companyEmail" class="auth-input" type="email"
+             placeholder="Company Email (@pw.live)" autocomplete="username" required>
+      <input id="companyPassword" class="auth-input" type="password"
+             placeholder="Password" autocomplete="current-password" required>
+      <button id="companyEmailLogin" class="auth-btn" type="submit">Sign in with Company Email</button>
+    </form>
+    <div id="authMessage" class="auth-msg">Enter your @pw.live company email and password.</div>
+  </div>
+</div>
+
+<header class="header">
+ <div class="title"><div class="logo">V</div><div><h1>PW- Master Dashboard</h1><div class="sub" id="sourceText">Loading latest central Vinculum report…</div></div></div>
+ <div class="header-tools">
+   <div class="header-search">
+     <span class="header-tool-icon">⌕</span>
+     <input id="globalOrderSearch" type="search" placeholder="Search Order No…" aria-label="Search Order No">
+   </div>
+   <div class="header-month">
+     <label for="globalMonthFilter">Month</label>
+     <select id="globalMonthFilter" aria-label="Filter by month">
+       <option value="">All Months</option>
+     </select>
+   </div>
+   <div class="actions">
+     <div id="authUser" class="auth-user" style="display:none"></div>
+     <label class="upload-label primary" for="file">＋ Upload Vinculum Excel</label>
+     <button onclick="resetAll()">↻ Reset</button>
+     <div class="counterapi" ns="kamal2-pal.github.io/PW-Master-Dashboard" action="view" key="master-dashboard" label="views" noIcon="true" noLink="true" style="min-height:32px;display:flex;align-items:center;"></div>
+     <div id="liveUsersCounter" title="Currently connected dashboard sessions" style="min-height:32px;display:flex;align-items:center;padding:0 11px;border:1px solid #38516a;border-radius:8px;background:#172331;color:#8ff0b0;font-size:13px;font-weight:800;white-space:nowrap;">
+       🟢 Live Now: <span id="liveUsersCount" style="margin-left:5px;">0</span>
+     </div>
+   </div>
+ </div>
+ <input id="file" type="file" accept=".xlsx,.xlsb,.xlsm,.xls,.csv">
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-tab="ordersTab">Order Fulfillment</button>
+  <button class="tab" data-tab="slaTab">48H Ship SLA</button>
+  <button class="tab" data-tab="manifestSlaTab">48H Manifest SLA</button>
+  <button class="tab" data-tab="pickerTab">Picker Report</button>
+  <button class="tab" data-tab="offrollTab">Offroll Attendance</button>
+  <button class="tab" data-tab="offrollViewTab">Offroll Attendance View</button>
+  <button class="tab" data-tab="b2cTab">B2C Dashboard</button>
+</div>
+
+<main class="wrap">
+<section id="ordersTab" class="tab-panel active-panel">
+ <div class="picker-actions" style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:12px">
+   <button id="orderLiveRefreshBtn" type="button" onclick="refreshOrderLive()">↻ Refresh Order Data</button>
+ </div>
+ <div class="kpis" id="kpis"></div>
+ <div class="coverage-strip" id="orderCoverage">Order data coverage: calculating…</div>
+ <section class="card" style="margin-bottom:16px">
+   <div class="section-title">Yesterday Summary</div>
+   <div class="note" id="orderYesterdayNote">Yesterday = calculating from Order create date.</div>
+   <div class="kpis sla-kpis" id="orderYesterdayCards" style="grid-template-columns:repeat(5,1fr);margin-bottom:0"></div>
+ </section>
+
+
+ <section class="ops-summary" id="opsSummary">
+   <div class="ops-card"><div class="summary-card search-summary-card" id="searchSummaryCard">
+  <div class="summary-title">🔎 Search Summary</div>
+  <div class="search-summary-controls">
+    <input id="searchSummaryInput" class="summary-search-input" type="text"
+           placeholder="Order No. / External Order No." autocomplete="off">
+    <button id="searchSummaryBtn" class="summary-search-btn" type="button">Search</button>
+    <button id="searchSummaryClear" class="summary-search-clear" type="button">Clear</button>
+  </div>
+  <div id="searchSummaryValue" class="summary-value">—</div>
+  <div id="searchSummaryText" class="summary-sub">Enter an Order No. or External Order No. and click Search.</div>
+  <div id="searchSummaryResult" class="search-summary-result"></div>
+</div>
+   <div class="ops-card"><h3>📅 Month Summary</h3><div class="big" id="monthSummaryOrders">0</div><div class="muted" id="monthSummaryText">All Months • current order population</div></div>
+   <div class="ops-card"><h3>⚡ Current KPI Summary</h3><div class="big" id="quickSummaryQty">0</div><div class="muted" id="quickSummaryText">Order Qty • current filters</div></div>
+ </section>
+ <section id="opsSearchResult" class="ops-search-result hidden">
+   <div class="section-title">Order Search Result</div>
+   <div class="note" id="opsSearchNote"></div>
+   <div id="opsSearchGrid" class="ops-search-grid"></div>
+ </section>
+ <section class="card" style="margin-bottom:16px" id="monthSummaryCard">
+   <div class="section-title">Month-wise Summary</div>
+   <div class="note">Month summary uses <b>Order create date</b>, unique Order No. and Order Qty.</div>
+   <div class="table-wrap"><table><thead><tr><th>Month</th><th>Unique Orders</th><th>Order Qty</th><th>Picked Qty</th><th>Shipped Qty</th><th>Open Qty</th></tr></thead><tbody id="monthSummaryTbody"></tbody></table></div>
+ </section>
+
+ <div class="note" style="margin:0 0 10px 4px">Order Fulfillment filters and daily reporting use <b>Order create date</b>. Channel dimension is <b>finance_category</b>.</div>
+<div class="filters">
+   <div class="field">Warehouse<select id="warehouse"><option value="">All Warehouses</option></select></div>
+   <div class="field">Finance Category<select id="channel"><option value="">All Finance Categories</option></select></div>
+   <div class="field">Status<select id="status"><option value="">All Status</option></select></div>
+   <div class="field">Order Type<select id="orderType"><option value="">All Order Types</option></select></div>
+   <div class="field">Order Creation From<input id="fromDate" type="date"></div>
+   <div class="field">Order Creation To<input id="toDate" type="date"></div>
+   <button onclick="clearFilters()">Clear Filters</button>
+ </div>
+
+ <div class="grid">
+   <section class="card"><div class="section-title">Order Status</div><div id="statusChart" class="hbars"></div></section>
+   <section class="card"><div class="section-title">Warehouse-wise Orders</div><div id="warehouseChart" class="hbars"></div></section>
+   <section class="card"><div class="section-title">Finance Category-wise Orders</div><div id="channelChart" class="hbars"></div></section>
+   <section class="card"><div class="section-title">Day-wise Orders</div><div id="dayChart" class="chart"></div></section>
+ </div>
+
+ <section class="table-card">
+   <div class="section-title">Order Details</div>
+   <div class="note" id="rowNote"></div>
+   <div class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+ </section>
+</section>
+
+
+<section id="slaTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>48H SLA Dashboard</h2>
+      <div class="note">SLA basis: <b>Order create date → Actual_ShipDate</b>. Target = 48 hours. All orders from Order Fulfillment are included.</div>
+    </div>
+    <div class="sla-target">Target <b>48 Hours</b><br><small>Order create → Actual Ship</small></div>
+  </div>
+
+  <div class="kpis sla-kpis" id="slaKpis"></div>
+
+  <div class="filters">
+    <div class="field">Warehouse<select id="slaWarehouse"><option value="">All Warehouses</option></select></div>
+    <div class="field">Finance Category<select id="slaChannel"><option value="">All Finance Categories</option></select></div>
+    <div class="field">SLA Status<select id="slaStatus"><option value="">All SLA Status</option></select></div>
+    <div class="field">From Date<input id="slaFrom" type="date"></div>
+    <div class="field">To Date<input id="slaTo" type="date"></div>
+    <button onclick="clearSlaFilters()">Clear SLA Filters</button>
+  </div>
+
+  <div class="grid">
+    <section class="card"><div class="section-title">SLA Status</div><div id="slaStatusChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">Warehouse SLA Performance</div><div id="slaWarehouseChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">Daily SLA %</div><div id="slaDayChart" class="chart"></div></section>
+    <section class="card">
+      <div class="section-title">SLA Rules</div>
+      <div class="sla-rules">
+        <div><span class="dot green-dot"></span><b>Within SLA</b> — Actual Ship in ≤ 48 hours</div>
+        <div><span class="dot red-dot"></span><b>Breached</b> — Actual Ship after 48 hours or still open after 48 hours</div>
+        <div><span class="dot"></span><b>Closed / Cancelled</b> — excluded from SLA measurement</div>
+        <div><span class="dot amber-dot"></span><b>At Risk</b> — open and due within the next 6 hours</div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-bottom:16px">
+    <div class="section-title">WH Remarks — Breached Orders</div>
+    <div class="note">Summary of <b>WH remarks</b> for orders breached on the 48H Ship SLA (Order create date → Actual_ShipDate).</div>
+    <div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div>
+  </section>
+
+  <section class="table-card" style="margin-bottom:16px">
+    <div class="section-title">Open >48H — Order-wise Remarks</div>
+    <div class="note">Only currently open orders whose <b>Order create date → Actual_ShipDate</b> age is more than 48 hours. Remarks are shown order-wise from <b>WH remarks</b>.</div>
+    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div>
+  </section>
+
+  <section class="table-card">
+    <div class="section-title">48H SLA Order Details</div>
+    <div class="note" id="slaNote"></div>
+    <div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div>
+  </section>
+
+</section>
+
+<section id="manifestSlaTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>48H Manifest Milestone Dashboard</h2>
+      <div class="note">Milestone check: <b>Order create date → Manifest Create Date</b>. Target = 48 hours. Cancelled orders are excluded.</div>
+    </div>
+    <div class="sla-target">Target <b>48 Hours</b></div>
+  </div>
+
+  <div class="kpis sla-kpis" id="manifestKpis"></div>
+
+  <div class="filters">
+    <div class="field">Warehouse<select id="manifestWarehouse"><option value="">All Warehouses</option></select></div>
+    <div class="field">Finance Category<select id="manifestChannel"><option value="">All Finance Categories</option></select></div>
+    <div class="field">SLA Status<select id="manifestStatus"><option value="">All SLA Status</option></select></div>
+    <div class="field">From Date<input id="manifestFrom" type="date"></div>
+    <div class="field">To Date<input id="manifestTo" type="date"></div>
+    <button onclick="clearManifestFilters()">Clear Filters</button>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="section-title">Manifest SLA Status</div>
+      <div id="manifestStatusChart" class="hbars"></div>
+    </section>
+    <section class="card">
+      <div class="section-title">Warehouse-wise Manifest SLA</div>
+      <div id="manifestWarehouseChart" class="hbars"></div>
+    </section>
+    <section class="card">
+      <div class="section-title">WH Remarks — Breached Orders</div>
+      <div id="remarksChart" class="hbars"></div>
+      <div class="note" style="margin-top:10px">This summary uses <b>WH remarks</b> only for orders that breached the 48H Manifest SLA.</div>
+    </section>
+    <section class="card">
+      <div class="section-title">Manifest SLA Rules</div>
+      <div class="sla-rules">
+        <div><span class="dot green-dot"></span><b>Within SLA</b> — manifest created in ≤ 48 hours</div>
+        <div><span class="dot red-dot"></span><b>Breached</b> — manifest created after 48 hours or still open after 48 hours</div>
+        <div><span class="dot"></span><b>Closed / Cancelled</b> — excluded from SLA measurement</div>
+        <div><span class="dot amber-dot"></span><b>At Risk</b> — no manifest yet and due within the next 6 hours</div>
+      </div>
+    </section>
+  </div>
+
+  <section class="table-card" style="margin-bottom:16px">
+    <div class="section-title">Open >48H — Order-wise Remarks</div>
+    <div class="note">Only currently open orders whose <b>Order create date → Manifest Create Date</b> age is more than 48 hours. Remarks are shown order-wise from <b>WH remarks</b>.</div>
+    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks</th></tr></thead><tbody id="manifestOpen48RemarksTbody"></tbody></table></div>
+  </section>
+
+  <section class="table-card">
+    <div class="section-title">48H Manifest SLA Order Details</div>
+    <div class="note" id="manifestNote"></div>
+    <div class="table-wrap"><table><thead id="manifestThead"></thead><tbody id="manifestTbody"></tbody></table></div>
+  </section>
+
+  <section class="table-card">
+    <div class="section-title">WH Remarks Summary — Breached Orders</div>
+    <div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="remarksTbody"></tbody></table></div>
+  </section>
+
+</main>
+
+
+<section id="offrollTab" class="tab-panel">
+  <div class="offroll-scope">
+    <div class="offroll-actions">
+      <div>
+        <h2>Offroll Attendance Dashboard</h2>
+        <p>LIVE source: Google Sheet • Attendance logic: <b>P</b> Present, <b>N</b> Night Present, <b>L</b> Leave, <b>HD</b> Half Day, blank = Absent; other values (e.g. NA) are ignored; future dates are not counted.</p>
+      </div>
+      <button id="offrollRefreshBtn" type="button" onclick="refreshOffrollLive()">↻ Refresh Google Sheet</button>
+    </div>
+
+    <div class="coverage-strip" id="offrollSourceLine">LIVE Offroll Google Sheet • loading…</div>
+
+    <div class="kpis offroll-kpis" id="offrollKpis"></div>
+
+    <div class="filters">
+      <div class="field">Department<select id="offrollDept"><option value="">All Departments</option></select></div>
+      <div class="field">Vendor<select id="offrollVendor"><option value="">All Vendors</option></select></div>
+      <div class="field">Employee Status<select id="offrollEmpStatus"><option value="">All Employee Status</option></select></div>
+      <div class="field">Attendance Date<input id="offrollDate" type="date"></div>
+      <div class="field">Employee Search<input id="offrollSearch" type="text" placeholder="Emp ID / Name"></div>
+      <button onclick="clearOffrollFilters()">Clear Filters</button>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <div class="section-title">Attendance Status Summary</div>
+        <div id="offrollStatusChart" class="hbars"></div>
+      </section>
+      <section class="card">
+        <div class="section-title">Department-wise Employees</div>
+        <div id="offrollDeptChart" class="hbars"></div>
+      </section>
+      <section class="card">
+        <div class="section-title">Attendance by Date</div>
+        <div id="offrollDayChart" class="chart"></div>
+      </section>
+      <section class="card">
+        <div class="section-title">Attendance Rules</div>
+        <div class="sla-rules">
+          <div><span class="dot green-dot"></span><b>P</b> — Present</div>
+          <div><span class="dot green-dot"></span><b>N</b> — Present in Night</div>
+          <div><span class="dot amber-dot"></span><b>HD</b> — Half Day</div>
+          <div><span class="dot red-dot"></span><b>L</b> — Leave</div>
+          <div><span class="dot red-dot"></span><b>Blank</b> — Absent</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="table-card">
+      <div class="section-title">Employee Attendance</div>
+      <div class="note" id="offrollTableNote"></div>
+      <div class="table-wrap"><table id="offrollTable"></table></div>
+    </section>
+  </div>
+</section>
+
+
+<section id="offrollViewTab" class="tab-panel">
+  <div class="offroll-view-scope">
+    <div class="offroll-view-head">
+      <div>
+        <h2>Offroll Attendance View</h2>
+        <p>Employee self-view • Login ID = <b>Emp ID</b> • Password = <b>DOJ</b> • Future dates are not counted.</p>
+      </div>
+      <div class="offroll-view-actions">
+        <button id="offrollViewRefreshBtn" type="button" onclick="refreshOffrollViewLive()">↻ Refresh</button>
+        <button id="offrollViewLogoutBtn" type="button" onclick="offrollViewLogout()" style="display:none">↪ Logout</button>
+      </div>
+    </div>
+
+    <div class="coverage-strip" id="offrollViewSourceLine">LIVE Offroll Google Sheet • loading…</div>
+
+    <div id="offrollViewLogin" class="offroll-login-card">
+      <h3>Employee Login</h3>
+      <p class="login-note">Apni attendance dekhne ke liye Emp ID aur DOJ enter karein. DOJ ko <b>DD/MM/YYYY</b>, <b>DD-MM-YYYY</b> ya <b>YYYY-MM-DD</b> format mein enter kar sakte hain.</p>
+      <form id="offrollLoginForm" class="offroll-login-form" onsubmit="event.preventDefault(); offrollViewLoginSubmit();">
+        <label>Login ID (Emp ID)
+          <input id="offrollLoginEmpId" type="text" autocomplete="username" placeholder="Enter Emp ID" required>
+        </label>
+        <label>Password (DOJ)
+          <input id="offrollLoginPassword" type="password" autocomplete="current-password" placeholder="DD/MM/YYYY" required>
+        </label>
+        <div id="offrollLoginError" class="offroll-login-error"></div>
+        <button class="primary" type="submit">Login</button>
+      </form>
+    </div>
+
+    <div id="offrollViewPrivate" class="offroll-view-private">
+      <div class="offroll-view-kpis" id="offrollViewKpis"></div>
+
+      <section class="offroll-view-employee">
+        <div class="section-title">Employee Details</div>
+        <div class="offroll-view-employee-grid" id="offrollViewEmployee"></div>
+      </section>
+
+      <section class="table-card offroll-view-table">
+        <div class="section-title">My Attendance</div>
+        <div class="note" id="offrollViewNote"></div>
+        <div class="table-wrap"><table id="offrollViewTable"></table></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<section id="pickerTab" class="tab-panel">
+  <div class="picker-scope">
+    <div class="picker-actions" style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:12px">
+      <button onclick="refreshPickerLive()">↻ Refresh Picker Data</button>
+    </div>
+    
+  <div class="hero">
+    <div><h2>Picker Performance Dashboard</h2>
+      <p>Pick User-wise unique Picklist, unique Order and Order Qty. Bin grouping: <b>SPR</b>, <b>MTR</b>, and all remaining bins as <b>GP B2B</b>.</p>
+    </div>
+    <div class="pill">Bin logic: SPR / MTR / GP B2B</div>
+  </div>
+
+  <div class="note" id="pickerSourceLine" style="margin:8px 0 14px">
+  LIVE Picker Report • waiting for latest GitHub report
+  <button id="pickerLiveRefreshBtn" type="button" onclick="refreshPickerLive()" style="margin-left:8px;padding:4px 9px;border-radius:6px;font-size:11px;background:#fff;color:#182230;border:1px solid #d4dbe3;cursor:pointer">↻ Refresh</button>
+</div>
+
+  <div class="picker-kpis" id="pickerCards"></div>
+  <div class="coverage-strip" id="pickerCoverage">Picker data coverage: calculating…</div>
+  <section class="panel">
+    <h3>Yesterday Summary</h3>
+    <div class="note" id="pickerYesterdayNote">Yesterday = calculating from Pick Date.</div>
+    <div class="summary-grid" id="pickerYesterdayCards"></div>
+  </section>
+
+  <div class="panel">
+    <h3>Filters</h3>
+    <div class="filters">
+      <div><label>Pick User</label><select id="pickerUserFilter"><option value="">All Pick Users</option></select></div>
+      <div><label>Bin Group</label><select id="pickerBinFilter"><option value="">All Bin Groups</option><option>SPR</option><option>MTR</option><option>GP B2B</option></select></div>
+      <div><label>Source Warehouse</label><select id="pickerWhFilter"><option value="">All Warehouses</option></select></div>
+      <div><label>Pick Date</label><input id="pickerDateFilter" type="date"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Picker-wise Performance</h3>
+    <div class="table-wrap"><table id="pickerTable"></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>Picker-wise Order Summary</h3>
+    <div class="note">Each picker’s unique Order No. split by bin group: SPR, MTR and GP B2B.</div>
+    <div class="table-wrap"><table id="pickerOrderSummaryTable"></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>Bin Group Summary</h3>
+    <div class="table-wrap"><table id="pickerBinTable"></table></div>
+  </div>
+
+  <div class="panel note">
+    <b>Counting logic:</b> Picklist Count = unique Picklist No. per picker/bin group; Order Count = unique Order No. per picker/bin group; Order Qty = sum of Qty. Any Bin beginning with <b>SPR</b> is SPR, any Bin beginning with <b>MTR</b> is MTR, and every other Bin is classified as <b>GP B2B</b>.
+  </div>
+
+  </div>
+</section>
+
+
+<section id="b2cTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>B2C Dashboard</h2>
+      <div class="note">B2C dashboard is aligned to the B2B dashboard layout. Ship By channels use <b>Order Creation → <b>24-hour</b> target against Actual Ship for all B2C channels.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="b2cRefreshBtn" type="button" onclick="refreshB2cLive()">↻ Refresh B2C Data</button>
+      <div class="sla-target">B2C • Live</div>
+    </div>
+  </div>
+
+  <div class="kpis sla-kpis" id="b2cKpis"></div>
+  <div class="coverage-strip" id="b2cCoverage">B2C data coverage: calculating…</div>
+
+  <div class="filters">
+    <div class="field">Channel<select id="b2cChannel"><option value="">All B2C Channels</option></select></div>
+    <div class="field">SLA Status<select id="b2cStatus"><option value="">All SLA Status</option></select></div>
+    <div class="field">Order Status<select id="b2cOrderStatus"><option value="">All Order Status</option></select></div>
+    <div class="field">From Order Creation<input id="b2cFrom" type="date"></div>
+    <div class="field">To Order Creation<input id="b2cTo" type="date"></div>
+    <button type="button" onclick="clearB2cFilters()">Clear B2C Filters</button>
+  </div>
+
+  <section class="card" id="b2c-allocation-pack-section" style="margin:14px 0;">
+    <div class="section-title">Allocation → Pack Summary</div>
+    <div class="note">Channel-wise unique orders and Order Qty. The summary follows the current B2C channel, Order Status and date filters.</div>
+    <div id="b2cAllocationPackSummary" class="table-wrap">
+      <div class="note">Loading Allocation → Pack summary…</div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card"><div class="section-title">B2C SLA Status</div><div id="b2cStatusChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">Channel-wise Orders</div><div id="b2cChannelChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">Day-wise Orders</div><div id="b2cDayChart" class="chart"></div></section>
+    <section class="card"><div class="section-title">Daily SLA %</div><div id="b2cSlaDayChart" class="chart"></div></section>
+  </div>
+
+  <section class="card">
+    <div class="section-title">Order Creation Date → Actual Ship Date Summary</div>
+    <div class="note">B2C TAT is measured from <b>Order Creation Date → Actual Ship Date</b> with a 24-hour target. Missing Actual Ship remains Open and is evaluated against Creation Date + 24 hours.</div>
+    <div class="table-wrap"><table><thead><tr><th>Channel</th><th>Total Orders</th><th>Within 24H</th><th>Breached</th><th>Open &gt; 24H</th><th>Open Before 24H</th><th>Missing Creation Date</th><th>Avg Creation → Ship</th></tr></thead><tbody id="b2c24Tbody"></tbody></table></div>
+  </section>
+
+  <section class="card">
+    <div class="section-title">Allocation Date → Actual Ship Date Summary</div>
+    <div class="note">Same B2C 24-hour view, measured from <b>Allocation Date → Actual Ship Date</b>. In the Vinculum B2C export, Allocation Date is sourced from <b>AllocationTime</b>. This summary uses the same B2C channel and Order Creation Date filters.</div>
+    <div class="table-wrap"><table><thead><tr><th>Channel</th><th>Total Orders</th><th>Within 24H</th><th>Breached</th><th>Open &gt; 24H</th><th>Open Before 24H</th><th>Missing Allocation Date</th><th>Avg Allocation → Ship</th></tr></thead><tbody id="b2cAllocationShipTbody"></tbody></table></div>
+  </section>
+</section>
+
+<script>
+let raw = [];
+let current = [];
+
+const preferred = ["Order No","Order create date","SKU","SKU Desc","Status","Order Qty","Picked Qty","Shipped Qty","Open Qty","FulfillmentLocationName","finance_category","Order Type","Pick Date","Pack Date","Actual_ShipDate","Delivery Date","AWB No.","Shipment status","Transporter"];
+
+function num(v) {
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  const n = parseFloat(String(v).replace(/,/g,""));
+  return isFinite(n) ? n : 0;
+}
+function unique(arr) { return [...new Set(arr.filter(v => v !== "" && v != null).map(String))].sort((a,b)=>a.localeCompare(b)); }
+function get(row, names) { for (const n of names) if (Object.prototype.hasOwnProperty.call(row,n)) return row[n]; return ""; }
+
+/* ===== Global dashboard filters =====
+   Header search + month filter apply to the order-based dashboard tabs.
+   B2C and Offroll keep their own independent filters/data sources.
+*/
+let globalOrderSearch = "";
+let globalMonthFilter = "";
+
+function globalFilteredRows(){
+  const q=String(globalOrderSearch||"").trim().toLowerCase();
+  const month=String(globalMonthFilter||"").trim();
+  if(!q && !month) return raw;
+
+  return raw.filter(r=>{
+    if(q){
+      const orderNo=String(get(r,["Order No"])||"").toLowerCase();
+      const external=String(get(r,["Extern Order No","External Order No","External OrderNo"])||"").toLowerCase();
+      if(!orderNo.includes(q) && !external.includes(q)) return false;
+    }
+    if(month){
+      const d=localDateKey(get(r,["Order create date","OrderDate"]));
+      if(!d || d.slice(0,7)!==month) return false;
+    }
+    return true;
+  });
+}
+
+function populateGlobalMonthFilter(){
+  const el=document.getElementById("globalMonthFilter");
+  if(!el) return;
+  const months=[...new Set(raw.map(r=>localDateKey(get(r,["Order create date","OrderDate"]))).filter(Boolean).map(d=>d.slice(0,7)))].sort().reverse();
+  const current=globalMonthFilter;
+  el.innerHTML='<option value="">All Months</option>'+months.map(m=>{
+    const [y,mo]=m.split("-");
+    const label=new Date(Number(y),Number(mo)-1,1).toLocaleString(undefined,{month:"long",year:"numeric"});
+    return `<option value="${m}">${label}</option>`;
+  }).join("");
+  if(months.includes(current)) el.value=current;
+  else { globalMonthFilter=""; el.value=""; }
+}
+
+function applyGlobalDashboardFilters(){
+  populateGlobalMonthFilter();
+  populateFilters();
+  applyFilters();
+  initSlaFilters();
+  applySlaFilters();
+  initManifestFilters();
+  applyManifestFilters();
+}
+
+function orderLevel(rows) {
+  // Keep EXACTLY the same order population for all 3 tabs.
+  // One Order No = one dashboard order, but merge information from
+  // all report rows so dates such as Order create / Manifest / Ship
+  // are not lost when the first SKU row is blank.
+  const seen = new Map();
+
+  rows.forEach((r, idx) => {
+    const rawId = get(r,["Order No"]);
+    const id = String(rawId ?? "").trim() || `__ROW_${idx}`;
+
+    if (!seen.has(id)) {
+      seen.set(id, {...r});
+      return;
+    }
+
+    const target = seen.get(id);
+
+    Object.keys(r).forEach(k => {
+      const incoming = r[k];
+      const existing = target[k];
+
+      // Fill blank fields from another row of the same order.
+      if ((existing === "" || existing === null || existing === undefined) &&
+          incoming !== "" && incoming !== null && incoming !== undefined) {
+        target[k] = incoming;
+      }
+    });
+
+    // For milestone/date fields, keep the earliest valid date found
+    // across all rows belonging to this order.
+    [
+      ["Order create date","OrderDate"],
+      ["Manifest Create Date","Manifest Create Date "],
+      ["Actual_ShipDate","Actual_ShipDate "]
+    ].forEach(names => {
+      const currentDate = parseSlaDate(target[names[0]] ?? target[names[1]]);
+      const incomingDate = parseSlaDate(r[names[0]] ?? r[names[1]]);
+      if (!currentDate && incomingDate) {
+        target[names[0]] = r[names[0]] ?? r[names[1]];
+      } else if (currentDate && incomingDate && incomingDate < currentDate) {
+        target[names[0]] = r[names[0]] ?? r[names[1]];
+      }
+    });
+  });
+
+  return [...seen.values()];
+}
+
+function fillSelect(id, values, label) {
+  const el=document.getElementById(id), old=el.value;
+  el.innerHTML=`<option value="">${label}</option>`+unique(values).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if (unique(values).includes(old)) el.value=old;
+}
+function esc(v) { return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+
+function populateFilters() {
+  const rows=globalFilteredRows();
+  fillSelect("warehouse",rows.map(r=>get(r,["FulfillmentLocationName"])),"All Warehouses");
+  fillSelect("channel",rows.map(r=>get(r,["finance_category","Finance Category"])),"All Finance Categories");
+  fillSelect("status",rows.map(r=>get(r,["Status"])),"All Status");
+  fillSelect("orderType",rows.map(r=>get(r,["Order Type"])),"All Order Types");
+}
+
+function applyFilters() {
+  const w=document.getElementById("warehouse").value, c=document.getElementById("channel").value;
+  const s=document.getElementById("status").value, o=document.getElementById("orderType").value;
+  const f=document.getElementById("fromDate").value, t=document.getElementById("toDate").value;
+  current=globalFilteredRows().filter(r=>{
+    if(w && String(get(r,["FulfillmentLocationName"]))!==w) return false;
+    if(c && String(get(r,["finance_category","Finance Category"]))!==c) return false;
+    if(s && String(get(r,["Status"]))!==s) return false;
+    if(o && String(get(r,["Order Type"]))!==o) return false;
+    const d=String(get(r,["Order create date","OrderDate"])).slice(0,10);
+    if(f && d<f) return false;
+    if(t && d>t) return false;
+    return true;
+  });
+  render();
+}
+
+function counts(rows, field) {
+  const m={};
+  rows.forEach(r=>{const k=String(get(r,[field])||"Blank");m[k]=(m[k]||0)+1;});
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+
+function hbar(id,title,data) {
+  const el=document.getElementById(id);
+  if(!data.length) {el.innerHTML="<div class='note'>No data</div>";return;}
+  const max=Math.max(...data.map(x=>x[1]))||1;
+  el.innerHTML=data.slice(0,10).map(([k,v])=>`<div class="row"><div title="${esc(k)}">${esc(k)}</div><div class="track"><div class="fill" style="width:${Math.max(3,v/max*100)}%"></div></div><strong>${v.toLocaleString()}</strong></div>`).join("");
+}
+
+function dayChart(rows) {
+  const m={};
+  rows.forEach(r=>{const d=String(get(r,["Order create date","OrderDate"])).slice(0,10); if(d) m[d]=(m[d]||0)+1;});
+  const a=Object.entries(m).sort((x,y)=>x[0].localeCompare(y[0])).slice(-14);
+  const max=Math.max(...a.map(x=>x[1]),1);
+  document.getElementById("dayChart").innerHTML=a.length?a.map(([d,v])=>`<div class="bar"><em>${v}</em><i style="height:${Math.max(2,v/max*190)}px"></i><span>${esc(d.slice(5))}</span></div>`).join(""):"<div class='note'>No data</div>";
+}
+
+function localDateKey(v){
+  const d=parseSlaDate(v);
+  if(!d) return "";
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+function yesterdayKey(){
+  const d=new Date(); d.setDate(d.getDate()-1);
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+function formatDateKey(k){
+  if(!k) return "No date";
+  const [y,m,d]=k.split("-"); return `${d}/${m}/${y}`;
+}
+function dateRangeFromRows(rows, fieldNames){
+  const vals=rows.map(r=>localDateKey(get(r,fieldNames))).filter(Boolean).sort();
+  return vals.length ? {from:vals[0],to:vals[vals.length-1]} : null;
+}
+function renderOrderCoverageAndYesterday(){
+  const scoped=globalFilteredRows();
+  const range=dateRangeFromRows(scoped,["Order create date","OrderDate"]);
+  const cov=document.getElementById("orderCoverage");
+  cov.textContent=range ? `Order data coverage (Order create date): ${formatDateKey(range.from)} → ${formatDateKey(range.to)} • ${scoped.length.toLocaleString()} report rows` : "Order data coverage: no valid Order create date found";
+  const y=yesterdayKey();
+  const yr=scoped.filter(r=>localDateKey(get(r,["Order create date","OrderDate"]))===y);
+  const yo=orderLevel(yr);
+  const qty=yr.reduce((a,r)=>a+num(get(r,["Order Qty"])),0);
+  const picked=yr.reduce((a,r)=>a+num(get(r,["Picked Qty"])),0);
+  const shipped=yr.reduce((a,r)=>a+num(get(r,["Shipped Qty"])),0);
+  const open=yr.reduce((a,r)=>a+num(get(r,["Open Qty"])),0);
+  document.getElementById("orderYesterdayNote").textContent=`Yesterday (${formatDateKey(y)}) based on Order create date.`;
+  document.getElementById("orderYesterdayCards").innerHTML=[
+    ["Unique Orders",yo.length],["Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open]
+  ].map(([k,v])=>`<div class="kpi"><small>${k}</small><strong>${Number(v).toLocaleString()}</strong></div>`).join("");
+}
+
+function render() {
+  renderOrderCoverageAndYesterday();
+  const orders=orderLevel(current);
+  const totalQty=current.reduce((s,r)=>s+num(get(r,["Order Qty"])),0);
+  const picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0);
+  const shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0);
+  const open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0);
+  const cancelled=orders.filter(r=>String(get(r,["Status"])).toLowerCase()==="cancelled").length;
+
+  const cards=[
+    ["Unique Orders",orders.length],["Total Order Qty",totalQty],["Picked Qty",picked],
+    ["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancelled]
+  ];
+  document.getElementById("kpis").innerHTML=cards.map(([k,v])=>{
+    const key = k==="Open Qty" ? "open" : k==="Cancelled Orders" ? "cancelled" : k==="Shipped Qty" ? "shipped" : k==="Picked Qty" ? "picked" : "all";
+    return `<div class="kpi kpi-clickable" data-kpi="${key}" title="Click to filter the order table"><small>${k}</small><strong>${Number(v).toLocaleString()}</strong></div>`;
+  }).join("");
+  updateOperationsSummary();
+
+  hbar("statusChart","",counts(orders,"Status"));
+  hbar("warehouseChart","",counts(orders,"FulfillmentLocationName"));
+  hbar("channelChart","",counts(orders,"finance_category"));
+  dayChart(orders);
+
+  const cols=preferred.filter(c=>current.length && Object.prototype.hasOwnProperty.call(current[0],c));
+  document.getElementById("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
+  document.getElementById("tbody").innerHTML=orders.map(r=>"<tr>"+cols.map(c=>`<td>${c==="Status"?`<span class="status">${esc(r[c])}</span>`:esc(r[c])}</td>`).join("")+"</tr>").join("");
+  document.getElementById("rowNote").textContent=`Showing ${orders.length.toLocaleString()} unique orders from ${current.length.toLocaleString()} report rows. Quantity KPIs use all filtered report rows.`;
+}
+
+["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>document.getElementById(id).addEventListener("change",applyFilters));
+
+
+function updateOperationsSummary(){
+  const scoped=globalFilteredRows();
+  const orders=orderLevel(current);
+  const q=String(globalOrderSearch||'').trim();
+  const searchEl=document.getElementById('searchSummaryCount');
+  const searchText=document.getElementById('searchSummaryText');
+  if(searchEl) searchEl.textContent=q ? orders.length.toLocaleString() : '—';
+  if(searchText) searchText.textContent=q ? `${orders.length.toLocaleString()} matching unique order(s) for “${q}”` : 'Type an Order No. or External Order No. in the header.';
+
+  const monthEl=document.getElementById('monthSummaryOrders');
+  const monthText=document.getElementById('monthSummaryText');
+  if(monthEl) monthEl.textContent=orders.length.toLocaleString();
+  if(monthText) monthText.textContent=globalMonthFilter ? `${monthLabel(globalMonthFilter)} • current order population` : 'All Months • current order population';
+
+  const qty=scoped.reduce((a,r)=>a+num(get(r,['Order Qty'])),0);
+  const qtyEl=document.getElementById('quickSummaryQty');
+  const qtyText=document.getElementById('quickSummaryText');
+  if(qtyEl) qtyEl.textContent=qty.toLocaleString();
+  if(qtyText) qtyText.textContent='Order Qty • current filters';
+
+  const by=new Map();
+  scoped.forEach(r=>{
+    const d=localDateKey(get(r,['Order create date','OrderDate'])); if(!d) return;
+    const m=d.slice(0,7); const x=by.get(m)||{rows:[],qty:0,picked:0,shipped:0,open:0};
+    x.rows.push(r); x.qty+=num(get(r,['Order Qty'])); x.picked+=num(get(r,['Picked Qty'])); x.shipped+=num(get(r,['Shipped Qty'])); x.open+=num(get(r,['Open Qty'])); by.set(m,x);
+  });
+  const tbody=document.getElementById('monthSummaryTbody');
+  if(tbody){
+    const months=[...by.keys()].sort().reverse();
+    tbody.innerHTML=months.length ? months.map(m=>{
+      const x=by.get(m); return `<tr><td><b>${esc(monthLabel(m))}</b></td><td>${orderLevel(x.rows).length.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${x.picked.toLocaleString()}</td><td>${x.shipped.toLocaleString()}</td><td>${x.open.toLocaleString()}</td></tr>`;
+    }).join('') : '<tr><td colspan="6">No data</td></tr>';
+  }
+
+  renderOrderSearchResult();
+}
+function monthLabel(m){
+  if(!m) return 'All Months';
+  const [y,mo]=m.split('-'); return new Date(Number(y),Number(mo)-1,1).toLocaleString(undefined,{month:'long',year:'numeric'});
+}
+function renderOrderSearchResult(){
+  const box=document.getElementById('opsSearchResult');
+  if(!box)return;
+  const q=String(globalOrderSearch||'').trim().toLowerCase();
+  if(!q){box.classList.add('hidden');return;}
+  const matches=orderLevel(globalFilteredRows()).slice(0,20);
+  box.classList.remove('hidden');
+  document.getElementById('opsSearchNote').textContent = matches.length ? `${matches.length} matching unique order(s). Showing up to 20.` : 'No matching order found.';
+  document.getElementById('opsSearchGrid').innerHTML=matches.map(r=>{
+    const qty=num(get(r,['Order Qty'])); const picked=num(get(r,['Picked Qty'])); const shipped=num(get(r,['Shipped Qty'])); const open=num(get(r,['Open Qty']));
+    return `<div class="item"><small>Order No</small><strong>${esc(get(r,['Order No']))}</strong><small style="margin-top:8px">Status</small><strong>${esc(get(r,['Status']))}</strong><small style="margin-top:8px">Order Date</small><strong>${esc(get(r,['Order create date','OrderDate']))}</strong><small style="margin-top:8px">Qty / Picked / Shipped / Open</small><strong>${qty.toLocaleString()} / ${picked.toLocaleString()} / ${shipped.toLocaleString()} / ${open.toLocaleString()}</strong></div>`;
+  }).join('');
+}
+function applyKpiFilter(key){
+  document.querySelectorAll('#kpis .kpi').forEach(x=>x.classList.remove('kpi-active'));
+  const el=document.querySelector(`#kpis .kpi[data-kpi="${key}"]`); if(el)el.classList.add('kpi-active');
+  const rows=globalFilteredRows();
+  if(key==='all'){ current=rows; }
+  else if(key==='cancelled'){ current=rows.filter(r=>String(get(r,['Status'])).toLowerCase()==='cancelled'); }
+  else if(key==='open'){ current=rows.filter(r=>num(get(r,['Open Qty']))>0); }
+  else if(key==='picked'){ current=rows.filter(r=>num(get(r,['Picked Qty']))>0); }
+  else if(key==='shipped'){ current=rows.filter(r=>num(get(r,['Shipped Qty']))>0); }
+  render();
+  document.querySelector('.table-card')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+document.addEventListener('click',e=>{
+  const card=e.target.closest('#kpis .kpi[data-kpi]');
+  if(card) applyKpiFilter(card.dataset.kpi);
+});
+
+function clearFilters() {
+  ["warehouse","channel","status","orderType"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("fromDate").value="";document.getElementById("toDate").value="";
+  applyFilters();
+}
+function resetAll(){
+  globalOrderSearch="";
+  globalMonthFilter="";
+  const q=document.getElementById("globalOrderSearch");
+  const m=document.getElementById("globalMonthFilter");
+  if(q) q.value="";
+  if(m) m.value="";
+  loadCentralExcel();
+}
+
+function normalizeRows(rows){
+  // Canonicalize the Vinculum Order Report headers used by the previous
+  // dashboard version while preserving all source columns.
+  return (rows||[]).map(r=>{
+    const x={};
+    Object.keys(r||{}).forEach(k=>{
+      let v=r[k];
+      if(v instanceof Date) v=v.toISOString().replace('T',' ').replace('Z','');
+      x[String(k).trim()]=v;
+    });
+    const alias=(canonical,candidates)=>{
+      if(x[canonical]===undefined || x[canonical]===null || x[canonical]===''){
+        for(const k of candidates){
+          if(x[k]!==undefined && x[k]!==null && x[k]!==''){x[canonical]=x[k];break;}
+        }
+      }
+    };
+    alias("Extern Order No",["ExternOrderNo","External Order No","External OrderNo"]);
+    alias("Customer Name",["Cutomer Name","CustomerName"]);
+    alias("Order create date",["OrderDate","Order Create Date","Order create date "]);
+    alias("Picklist No.",["PickListNo","Picklist No","PicklistNo"]);
+    alias("Bin",["FROMBIN","From Bin","FROM BIN"]);
+    alias("Pick User",["PickUser","Pick User Name"]);
+    alias("WH remarks",["WH Remarks","WH remarks "]);
+    alias("Manifest Create Date",["Manifest Create Date ","ManifestCreateDate"]);
+    alias("Actual_ShipDate",["Actual_ShipDate ","Actual Ship Date","ActualShipDate"]);
+    alias("FulfillmentLocationName",["Fulfillment Location Name"]);
+    alias("finance_category",["Finance Category","finance category"]);
+    return x;
+  });
+}
+
+function hasOrderColumns(rows){
+  const keys=new Set(Object.keys((rows&&rows[0])||{}).map(k=>String(k).trim()));
+  const required=["Order No","Status","Order Qty","Picked Qty","Shipped Qty","Open Qty"];
+  const hasOrderDate=keys.has("OrderDate") || keys.has("Order create date") || keys.has("Order Create Date");
+  return required.every(k=>keys.has(k)) && hasOrderDate;
+}
+function hasPickerColumns(rows){
+  const keys=new Set(Object.keys((rows&&rows[0])||{}).map(k=>String(k).trim()));
+  return ["Order No","Pick User","Bin","Qty","Picklist No.","Source WH"].every(k=>keys.has(k));
+}
+
+function syncPickerFromMainUpload(rows,fileName){
+  if(hasPickerColumns(rows)){
+    pickerRows=rows;
+    document.getElementById("pickerSourceLine").textContent=`Auto-loaded from ${fileName} • ${rows.length.toLocaleString()} picker report rows`;
+    populatePickerFilters();
+    document.getElementById("pickerDateFilter").value="";
+    renderPicker();
+  }else{
+    // Never keep showing stale embedded picker data after a new main file is uploaded.
+    pickerRows=[];
+    document.getElementById("pickerSourceLine").textContent=`No picker columns found in ${fileName} • upload the Picker Report to populate this tab`;
+    populatePickerFilters();
+    document.getElementById("pickerDateFilter").value="";
+    renderPicker();
+  }
+}
+
+function parseWorkbookBuffer(buffer){
+  const wb=XLSX.read(buffer,{type:"array",cellDates:true});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  return normalizeRows(XLSX.utils.sheet_to_json(ws,{defval:""}));
+}
+
+const CENTRAL_LOCAL_STORAGE_KEY = "vinculum_central_report_v2";
+
+function saveCentralReportLocally(data, name){
+  try{
+    localStorage.setItem(CENTRAL_LOCAL_STORAGE_KEY, JSON.stringify({
+      name: name || "Uploaded Vinculum Excel",
+      rows: data || [],
+      savedAt: new Date().toISOString()
+    }));
+    return true;
+  }catch(err){
+    console.warn("Could not save central report locally:", err);
+    return false;
+  }
+}
+
+function loadCentralReportLocally(){
+  try{
+    const saved=localStorage.getItem(CENTRAL_LOCAL_STORAGE_KEY);
+    if(!saved) return false;
+    const obj=JSON.parse(saved);
+    if(!obj || !Array.isArray(obj.rows) || !obj.rows.length || !hasOrderColumns(obj.rows)) return false;
+    raw=obj.rows;
+    populateGlobalMonthFilter();
+    populateFilters(); clearFilters();
+    initSlaFilters(); applySlaFilters();
+    initManifestFilters(); applyManifestFilters();
+    const savedAt=new Date(obj.savedAt||"");
+    const when=isNaN(savedAt.getTime()) ? "" : ` • saved ${savedAt.toLocaleString()}`;
+    document.getElementById("sourceText").textContent =
+      `Latest uploaded Vinculum report • ${raw.length.toLocaleString()} report rows • ${obj.name||"local file"}${when}`;
+    syncPickerFromMainUpload(raw,obj.name||"uploaded file");
+    return true;
+  }catch(err){
+    console.warn("Could not load saved central report:", err);
+    return false;
+  }
+}
+
+async function loadCentralExcel(){
+  // Previous-version behaviour: data.xlsx is the source of truth on
+  // initial load/reset, so stale browser-local uploads cannot mask it.
+  try{
+    const response = await fetch("data.xlsx?ts="+Date.now()+"-"+Math.random().toString(36).slice(2), {
+      cache:"no-store",
+      headers:{"Cache-Control":"no-cache"}
+    });
+    if(!response.ok) throw new Error("data.xlsx not found ("+response.status+")");
+
+    const buffer = await response.arrayBuffer();
+    const wb = XLSX.read(buffer,{type:"array",cellDates:true});
+
+    let orderRows=[];
+    for(const sheetName of wb.SheetNames){
+      const rows=normalizeRows(XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:""}));
+      if(hasOrderColumns(rows)){ orderRows=rows; break; }
+    }
+    if(!orderRows.length){
+      throw new Error("data.xlsx does not contain the Vinculum Order report");
+    }
+
+    raw=orderRows;
+    populateGlobalMonthFilter();
+    populateFilters();
+    clearFilters();
+    initSlaFilters();
+    applySlaFilters();
+    initManifestFilters();
+    applyManifestFilters();
+
+    const loadedAt = new Date();
+    let metaText = `Loaded ${loadedAt.toLocaleString()}`;
+    try{
+      const metaRes = await fetch("data-meta.json?ts="+Date.now()+"-"+Math.random().toString(36).slice(2), {
+        cache:"no-store",
+        headers:{"Cache-Control":"no-cache"}
+      });
+      if(metaRes.ok){
+        const meta=await metaRes.json();
+        const metaAt=new Date(meta.updatedAt||"");
+        if(!isNaN(metaAt.getTime())) metaText=`File updated ${metaAt.toLocaleString()}`;
+      }
+    }catch(e){}
+
+    document.getElementById("sourceText").textContent =
+      `LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • ${metaText}`;
+
+    // Picker stays independent.
+    loadLatestPickerFromGithub();
+    return true;
+  }catch(err){
+    raw=[];
+    current=[];
+    document.getElementById("sourceText").textContent =
+      `LIVE Order report unavailable • ${err.message}`;
+    populateFilters();
+    render();
+    console.warn("Live Order report unavailable:",err);
+    loadLatestPickerFromGithub();
+    return false;
+  }
+}
+
+async function refreshOrderLive(){
+  const btn=document.getElementById("orderLiveRefreshBtn");
+  if(btn){
+    btn.disabled=true;
+    btn.textContent="↻ Refreshing…";
+  }
+
+  const source=document.getElementById("sourceText");
+  const previous=source ? source.textContent : "";
+  if(source) source.textContent="Refreshing LIVE Vinculum report…";
+
+  try{
+    const ok=await loadCentralExcel();
+    if(!ok && source && previous) source.textContent=previous;
+  }finally{
+    const b=document.getElementById("orderLiveRefreshBtn");
+    if(b){
+      b.disabled=false;
+      b.textContent="↻ Refresh Order Data";
+    }
+  }
+}
+
+document.getElementById("file").addEventListener("change",async e=>{
+  const file=e.target.files[0]; if(!file)return;
+  try{
+    const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});
+    let orderData=[];
+    let pickerData=[];
+
+    for(const sheetName of wb.SheetNames){
+      const rows=normalizeRows(XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:""}));
+      if(!orderData.length && hasOrderColumns(rows)) orderData=rows;
+      if(!pickerData.length && hasPickerColumns(rows)) pickerData=rows;
+    }
+
+    if(orderData.length){
+      raw=orderData;
+      saveCentralReportLocally(raw,file.name);
+      populateGlobalMonthFilter();
+      populateFilters(); clearFilters();
+      initSlaFilters(); applySlaFilters();
+      initManifestFilters(); applyManifestFilters();
+      document.getElementById("sourceText").textContent=
+        `LIVE Order upload • ${raw.length.toLocaleString()} report rows • ${file.name} • uploaded ${new Date().toLocaleString()}`;
+      loadLatestPickerFromGithub();
+      alert("Order report loaded successfully. Picker data remains separate.");
+    }else if(pickerData.length){
+      // Picker upload must NEVER replace raw/current Order data.
+      loadPickerObjects(pickerData,file.name);
+      document.getElementById("pickerDateFilter").value="";
+      renderPicker();
+      const pickerTabBtn=document.querySelector('.tab[data-tab="pickerTab"]');
+      if(pickerTabBtn) pickerTabBtn.click();
+      alert("Picker Report loaded successfully. Order/SLA data was not changed.");
+    }else{
+      throw new Error("This file is neither a valid Vinculum Order report nor a valid Picker Report.");
+    }
+  }catch(err){
+    alert("File read nahi ho payi: "+err.message);
+  }finally{
+    e.target.value="";
+  }
+});
+
+const globalOrderSearchEl=document.getElementById("globalOrderSearch");
+const globalMonthFilterEl=document.getElementById("globalMonthFilter");
+if(globalOrderSearchEl){
+  globalOrderSearchEl.addEventListener("input",()=>{
+    globalOrderSearch=globalOrderSearchEl.value;
+    applyGlobalDashboardFilters();
+  });
+}
+if(globalMonthFilterEl){
+  globalMonthFilterEl.addEventListener("change",()=>{
+    globalMonthFilter=globalMonthFilterEl.value;
+    applyGlobalDashboardFilters();
+  });
+}
+
+populateGlobalMonthFilter();
+populateFilters(); render();
+
+let slaCurrent = [];
+
+function parseSlaDate(v){
+  if(v === null || v === undefined || v === "") return null;
+
+  // Excel serial date fallback.
+  if(typeof v === "number" && isFinite(v)){
+    const d = XLSX.SSF.parse_date_code(v);
+    if(d){
+      return new Date(d.y, d.m - 1, d.d, d.H || 0, d.M || 0, d.S || 0);
+    }
+  }
+
+  const s = String(v).trim().replace(/\./g,"");
+  if(!s) return null;
+
+  // YYYY-MM-DD (including timestamps)
+  let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if(m){
+    const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if(m){
+    const d = new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function buildSlaRows(){
+  const now = new Date();
+  const orders = orderLevel(globalFilteredRows());
+
+  return orders.map(r => {
+    const orderDate = parseSlaDate(get(r,["Order create date","OrderDate"]));
+    const shipDate = parseSlaDate(get(r,["Actual_ShipDate","Actual_ShipDate "]));
+    const isCancelled = String(get(r,["Status"])).toLowerCase().trim() === "cancelled";
+
+    const isClosed = String(get(r,["Status"])).toLowerCase().trim() === "closed";
+
+    if(isCancelled || isClosed){
+      return {
+        ...r,
+        _sla: isCancelled ? "Cancelled" : "Closed",
+        _hours:null,
+        _due:orderDate ? new Date(orderDate.getTime()+48*3600000) : null,
+        _slaMilestone:"Cancelled"
+      };
+    }
+
+    if(!orderDate){
+      return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};
+    }
+
+    const due = new Date(orderDate.getTime()+48*3600000);
+
+    // TAB 2 BUSINESS RULE:
+    // Order create date -> Actual_ShipDate ONLY.
+    // If Actual_ShipDate is blank, the order is OPEN, not BREACHED.
+    // The open order is split by age: <48H, At Risk (42-48H), or >48H.
+    const end = shipDate || now;
+    const hours = (end-orderDate)/3600000;
+
+    let status;
+    if(shipDate) {
+      status = hours <= 48 ? "Within SLA" : "Breached";
+    } else {
+      status = hours > 48 ? "Open >48H" : (hours >= 42 ? "At Risk" : "Open <48H");
+    }
+
+    return {
+      ...r,
+      _sla:status,
+      _hours:hours,
+      _due:due,
+      _slaMilestone:shipDate ? "Actual_ShipDate" : "Open - Actual_ShipDate blank"
+    };
+  });
+}
+
+function initSlaFilters(){
+  const rows=buildSlaRows();
+  slaFill("slaWarehouse",rows.map(r=>get(r,["FulfillmentLocationName"])),"All Warehouses");
+  slaFill("slaChannel",rows.map(r=>get(r,["finance_category","Finance Category"])),"All Finance Categories");
+  slaFill("slaStatus",rows.map(r=>r._sla),"All SLA Status");
+}
+
+function slaFill(id,values,label){
+  const el=document.getElementById(id), old=el.value, vals=unique(values);
+  el.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if(vals.includes(old)) el.value=old;
+}
+
+function applySlaFilters(){
+  const w=document.getElementById("slaWarehouse").value;
+  const c=document.getElementById("slaChannel").value;
+  const s=document.getElementById("slaStatus").value;
+  const f=document.getElementById("slaFrom").value;
+  const t=document.getElementById("slaTo").value;
+
+  slaCurrent=buildSlaRows().filter(r=>{
+    if(w && String(get(r,["FulfillmentLocationName"]))!==w) return false;
+    if(c && String(get(r,["finance_category","Finance Category"]))!==c) return false;
+    if(s && r._sla!==s) return false;
+    const d=String(get(r,["Order create date"])).slice(0,10);
+    if(f && d<f) return false;
+    if(t && d>t) return false;
+    return true;
+  });
+  renderSla();
+}
+
+function renderSla(){
+  const rows=slaCurrent;
+  const total=rows.length;
+  const within=rows.filter(r=>r._sla==="Within SLA").length;
+  const breached=rows.filter(r=>r._sla==="Breached").length;
+  const openUnder48=rows.filter(r=>r._sla==="Open <48H").length;
+  const openOver48=rows.filter(r=>r._sla==="Open >48H").length;
+  const risk=rows.filter(r=>r._sla==="At Risk").length;
+  const cancelled=rows.filter(r=>r._sla==="Cancelled").length;
+  const closed=rows.filter(r=>r._sla==="Closed").length;
+  const noDate=rows.filter(r=>r._sla==="No Order Create Date").length;
+  // SLA % = Within SLA / (Within SLA + Breached).
+  // At Risk/Open are still shown separately and do not count as measured.
+  const measured=within+breached;
+  const pct=measured ? within/measured*100 : 0;
+
+  const totalPct = total ? 100 : 0;
+  const withinPct = total ? within/total*100 : 0;
+  const breachedPct = total ? breached/total*100 : 0;
+  const riskPct = total ? risk/total*100 : 0;
+  const openUnder48Pct = total ? openUnder48/total*100 : 0;
+  const openOver48Pct = total ? openOver48/total*100 : 0;
+
+  const cancelledPct = total ? cancelled/total*100 : 0;
+  const noDatePct = total ? noDate/total*100 : 0;
+
+  const cards=[
+    ["All Orders",total,totalPct,""],
+    ["Within SLA",within,withinPct,"sla-kpi-good"],
+    ["SLA %",pct,null,"sla-kpi-good"],
+    ["Breached",breached,breachedPct,"sla-kpi-bad"],
+    ["At Risk",risk,riskPct,"sla-kpi-risk"],
+    ["Open < 48H",openUnder48,openUnder48Pct,""],
+    ["Open > 48H",openOver48,openOver48Pct,"sla-kpi-bad"],
+    ["Cancelled / Closed",cancelled+closed,total ? (cancelled+closed)/total*100 : 0,""],
+    ["No Create Date",noDate,noDatePct,"sla-kpi-bad"]
+  ];
+  document.getElementById("slaKpis").innerHTML=cards.map(([k,v,p,cl])=>
+    `<div class="kpi ${cl}"><small>${k}</small><strong>${typeof v==="number"?v.toLocaleString():v}</strong>${p!==null?`<span class="kpi-pct">${p.toFixed(1)}% of SLA orders</span>`:""}</div>`).join("");
+
+  const statusData={};
+  rows.forEach(r=>statusData[r._sla]=(statusData[r._sla]||0)+1);
+  const shipStatusPairs=Object.entries(statusData).sort((a,b)=>b[1]-a[1]);
+  hbar("slaStatusChart","",shipStatusPairs);
+  document.getElementById("slaStatusChart").insertAdjacentHTML("afterbegin",
+    `<div class="note">Percent of SLA orders: ${shipStatusPairs.map(([k,v])=>`${esc(k)} ${total?((v/total)*100).toFixed(1):"0.0"}%`).join(" • ")}</div>`);
+  const shipWhPairs=counts(rows,"FulfillmentLocationName");
+  hbar("slaWarehouseChart","",shipWhPairs);
+  const shipWhTotal=shipWhPairs.reduce((s,x)=>s+x[1],0);
+  document.getElementById("slaWarehouseChart").insertAdjacentHTML("afterbegin",
+    `<div class="note">Warehouse share: ${shipWhPairs.map(([k,v])=>`${esc(k)} ${shipWhTotal?((v/shipWhTotal)*100).toFixed(1):"0.0"}%`).join(" • ")}</div>`);
+
+  const daily={};
+  rows.forEach(r=>{
+    const d=String(get(r,["Order create date"])).slice(0,10);
+    if(!d)return;
+    if(!daily[d])daily[d]={ok:0,total:0};
+    daily[d].total++;
+    if(r._sla==="Within SLA")daily[d].ok++;
+  });
+  const days=Object.entries(daily).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
+  document.getElementById("slaDayChart").innerHTML=days.length ? days.map(([d,x])=>{
+    const p=x.total ? x.ok/x.total*100 : 0;
+    return `<div class="bar"><em>${p.toFixed(0)}%</em><i style="height:${Math.max(2,p/100*190)}px"></i><span>${esc(d.slice(5))}</span></div>`;
+  }).join("") : "<div class='note'>No data</div>";
+
+  const slaBreachedRows=rows.filter(r=>r._sla==="Breached");
+  const slaRemarks={};
+  slaBreachedRows.forEach(r=>{
+    const remark=String(get(r,["WH remarks","WH Remarks","WH remarks "]) ?? "").trim() || "Blank / No Remarks";
+    slaRemarks[remark]=(slaRemarks[remark]||0)+1;
+  });
+  const slaRemarkPairs=Object.entries(slaRemarks).sort((a,b)=>b[1]-a[1]);
+  const slaOpen48RemarksBody=document.getElementById("slaOpen48RemarksTbody");
+  if(slaOpen48RemarksBody){
+    const open48=rows.filter(r=>r._sla==="Open >48H")
+      .sort((a,b)=>(b._hours||0)-(a._hours||0));
+    slaOpen48RemarksBody.innerHTML=open48.length
+      ? open48.map(r=>{
+          const remark=String(get(r,["WH remarks","WH Remarks","WH remarks "]) ?? "").trim() || "Blank / No Remarks";
+          const orderDate=get(r,["Order create date","OrderDate"]);
+          return `<tr><td>${esc(get(r,["Order No"])??"")}</td><td>${esc(get(r,["FulfillmentLocationName"])??"")}</td><td>${esc(orderDate??"")}</td><td>${r._hours!=null?r._hours.toFixed(1):""}</td><td>${esc(remark)}</td></tr>`;
+        }).join("")
+      : `<tr><td colspan="5">No open orders above 48 hours in the selected filters.</td></tr>`;
+  }
+
+  const slaRemarksBody=document.getElementById("slaRemarksTbody");
+  if(slaRemarksBody){
+    slaRemarksBody.innerHTML=slaRemarkPairs.length
+      ? slaRemarkPairs.map(([remark,count])=>`<tr><td>${esc(remark)}</td><td>${count.toLocaleString()}</td><td>${breached?((count/breached)*100).toFixed(1):"0.0"}%</td></tr>`).join("")
+      : `<tr><td colspan="3">No breached orders in the selected filters.</td></tr>`;
+  }
+
+  const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate","WH remarks"];
+  document.getElementById("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>Milestone Used</th></tr>";
+
+  document.getElementById("slaTbody").innerHTML=rows.map(r=>{
+    const due=r._due ? r._due.toLocaleString() : "";
+    const hrs=r._hours!=null ? r._hours.toFixed(1) : "";
+    const cls=r._sla==="Within SLA"?"sla-good":r._sla==="Breached"?"sla-bad":r._sla==="At Risk"?"sla-risk":"";
+    return "<tr>"+cols.map(c=>`<td>${esc(r[c]??"")}</td>`).join("")+
+      `<td class="${cls}">${esc(r._sla)}</td><td>${hrs}</td><td>${esc(due)}</td><td>${esc(r._slaMilestone)}</td></tr>`;
+  }).join("");
+
+  document.getElementById("slaNote").textContent =
+    `${total.toLocaleString()} unique orders • same order population as Order Fulfillment • SLA = Order create date → Actual_ShipDate • target 48 hours. Manifest Create Date is used only in the separate Manifest tab. Blank Actual_ShipDate/Manifest Create Date = Open; open orders are split into <48H, At Risk, and >48H using current browser time.`;
+}
+
+function clearSlaFilters(){
+  ["slaWarehouse","slaChannel","slaStatus"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("slaFrom").value="";
+  document.getElementById("slaTo").value="";
+  applySlaFilters();
+}
+
+document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
+  btn.classList.add("active");
+  document.getElementById(btn.dataset.tab).classList.add("active-panel");
+  if(btn.dataset.tab==="slaTab"){
+    initSlaFilters();
+    applySlaFilters();
+  }
+}));
+
+["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>
+  document.getElementById(id).addEventListener("change",applySlaFilters)
+);
+
+// After a new Vinculum Excel is uploaded, refresh SLA controls too.
+document.getElementById("file").addEventListener("change",()=>{
+  setTimeout(()=>{initSlaFilters();applySlaFilters();},150);
+});
+
+initSlaFilters();
+applySlaFilters();
+
+
+let manifestCurrent = [];
+
+function buildManifestRows(){
+  const now = new Date();
+  const orders = orderLevel(globalFilteredRows());
+  return orders.map(r => {
+    const status = String(get(r,["Status"])).trim().toLowerCase();
+    const orderDate = parseSlaDate(get(r,["Order create date","OrderDate"]));
+    const manifestDate = parseSlaDate(get(r,["Manifest Create Date","Manifest Create Date "]));
+    const remarks = String(get(r,["WH remarks","WH Remarks","WH remarks "]) ?? "").trim() || "Blank / No Remarks";
+
+    const isClosed = status === "closed";
+    if(status === "cancelled" || isClosed) return {...r,_manifestSla: status === "cancelled" ? "Cancelled" : "Closed",_manifestHours:null,_manifestDue:orderDate?new Date(orderDate.getTime()+48*3600000):null,_whRemarks:remarks};
+    if(!orderDate) return {...r,_manifestSla:"No Order Create Date",_manifestHours:null,_manifestDue:null,_whRemarks:remarks};
+
+    const due = new Date(orderDate.getTime()+48*3600000);
+    const end = manifestDate || now;
+    const hours = (end-orderDate)/3600000;
+
+    // TAB 3 BUSINESS RULE:
+    // Order create date -> Manifest Create Date.
+    // If Manifest Create Date is blank, the order is OPEN, not BREACHED.
+    const slaStatus = manifestDate
+      ? (hours<=48 ? "Within SLA" : "Breached")
+      : (hours>48 ? "Open >48H" : (hours>=42 ? "At Risk" : "Open <48H"));
+
+    return {
+      ...r,
+      _manifestSla:slaStatus,
+      _manifestHours:hours,
+      _manifestDue:due,
+      _whRemarks:remarks
+    };
+  });
+}
+
+function fillManifestSelect(id,values,label){
+  const el=document.getElementById(id), old=el.value, vals=unique(values);
+  el.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if(vals.includes(old)) el.value=old;
+}
+
+function initManifestFilters(){
+  const rows=buildManifestRows();
+  fillManifestSelect("manifestWarehouse",rows.map(r=>get(r,["FulfillmentLocationName"])),"All Warehouses");
+  fillManifestSelect("manifestChannel",rows.map(r=>get(r,["finance_category","Finance Category"])),"All Finance Categories");
+  fillManifestSelect("manifestStatus",rows.map(r=>r._manifestSla),"All SLA Status");
+}
+
+function applyManifestFilters(){
+  const w=document.getElementById("manifestWarehouse").value;
+  const c=document.getElementById("manifestChannel").value;
+  const s=document.getElementById("manifestStatus").value;
+  const f=document.getElementById("manifestFrom").value;
+  const t=document.getElementById("manifestTo").value;
+
+  manifestCurrent=buildManifestRows().filter(r=>{
+    if(w && String(get(r,["FulfillmentLocationName"]))!==w) return false;
+    if(c && String(get(r,["finance_category","Finance Category"]))!==c) return false;
+    if(s && r._manifestSla!==s) return false;
+    const d=String(get(r,["Order create date","OrderDate"])).slice(0,10);
+    if(f && d<f) return false;
+    if(t && d>t) return false;
+    return true;
+  });
+  renderManifestSla();
+}
+
+function renderManifestSla(){
+  const rows=manifestCurrent;
+  const total=rows.length;
+  const within=rows.filter(r=>r._manifestSla==="Within SLA").length;
+  const breachedRows=rows.filter(r=>r._manifestSla==="Breached");
+  const breached=breachedRows.length;
+  const risk=rows.filter(r=>r._manifestSla==="At Risk").length;
+  const openUnder48=rows.filter(r=>r._manifestSla==="Open <48H").length;
+  const openOver48=rows.filter(r=>r._manifestSla==="Open >48H").length;
+  const closedCancelled=rows.filter(r=>r._manifestSla==="Closed" || r._manifestSla==="Cancelled").length;
+  // SLA % = Within SLA / (Within SLA + Breached).
+  // At Risk/Open are still shown separately and do not count as measured.
+  const measured=within+breached;
+  const pct=measured ? within/measured*100 : 0;
+
+  const totalPct = total ? 100 : 0;
+  const withinPct = total ? within/total*100 : 0;
+  const breachedPct = total ? breached/total*100 : 0;
+  const riskPct = total ? risk/total*100 : 0;
+  const openUnder48Pct = total ? openUnder48/total*100 : 0;
+  const openOver48Pct = total ? openOver48/total*100 : 0;
+
+  const cards=[
+    ["Manifest SLA Orders",total,totalPct,""],
+    ["Within SLA",within,withinPct,"sla-kpi-good"],
+    ["Manifest SLA %",pct,null,"sla-kpi-good"],
+    ["Breached",breached,breachedPct,"sla-kpi-bad"],
+    ["At Risk",risk,riskPct,"sla-kpi-risk"],
+    ["Open < 48H",openUnder48,openUnder48Pct,""],
+    ["Open > 48H",openOver48,openOver48Pct,"sla-kpi-bad"],
+    ["Closed / Cancelled",closedCancelled,total ? closedCancelled/total*100 : 0,""]
+  ];
+  document.getElementById("manifestKpis").innerHTML=cards.map(([k,v,p,cl])=>
+    `<div class="kpi ${cl}"><small>${k}</small><strong>${typeof v==="number"?v.toLocaleString():v}</strong>${p!==null?`<span class="kpi-pct">${p.toFixed(1)}% of SLA orders</span>`:""}</div>`).join("");
+
+  const statusData={};
+  rows.forEach(r=>statusData[r._manifestSla]=(statusData[r._manifestSla]||0)+1);
+  const manifestStatusPairs=Object.entries(statusData).sort((a,b)=>b[1]-a[1]);
+  hbar("manifestStatusChart","",manifestStatusPairs);
+  document.getElementById("manifestStatusChart").insertAdjacentHTML("afterbegin",
+    `<div class="note">Percent of manifest SLA orders: ${manifestStatusPairs.map(([k,v])=>`${esc(k)} ${total?((v/total)*100).toFixed(1):"0.0"}%`).join(" • ")}</div>`);
+  const manifestWhPairs=counts(rows,"FulfillmentLocationName");
+  hbar("manifestWarehouseChart","",manifestWhPairs);
+  const manifestWhTotal=manifestWhPairs.reduce((s,x)=>s+x[1],0);
+  document.getElementById("manifestWarehouseChart").insertAdjacentHTML("afterbegin",
+    `<div class="note">Warehouse share: ${manifestWhPairs.map(([k,v])=>`${esc(k)} ${manifestWhTotal?((v/manifestWhTotal)*100).toFixed(1):"0.0"}%`).join(" • ")}</div>`);
+
+  const remarks={};
+  breachedRows.forEach(r=>remarks[r._whRemarks]=(remarks[r._whRemarks]||0)+1);
+  const remarkPairs=Object.entries(remarks).sort((a,b)=>b[1]-a[1]);
+  hbar("remarksChart","",remarkPairs);
+
+  document.getElementById("remarksTbody").innerHTML = remarkPairs.length
+    ? remarkPairs.map(([remark,count])=>`<tr><td>${esc(remark)}</td><td>${count.toLocaleString()}</td><td>${breached?((count/breached)*100).toFixed(1):"0.0"}%</td></tr>`).join("")
+    : `<tr><td colspan="3">No breached orders in the selected filters.</td></tr>`;
+
+  const manifestOpen48RemarksBody=document.getElementById("manifestOpen48RemarksTbody");
+  if(manifestOpen48RemarksBody){
+    const open48=rows.filter(r=>r._manifestSla==="Open >48H")
+      .sort((a,b)=>(b._manifestHours||0)-(a._manifestHours||0));
+    manifestOpen48RemarksBody.innerHTML=open48.length
+      ? open48.map(r=>{
+          const remark=String(get(r,["WH remarks","WH Remarks","WH remarks "]) ?? "").trim() || "Blank / No Remarks";
+          const orderDate=get(r,["Order create date","OrderDate"]);
+          return `<tr><td>${esc(get(r,["Order No"])??"")}</td><td>${esc(get(r,["FulfillmentLocationName"])??"")}</td><td>${esc(orderDate??"")}</td><td>${r._manifestHours!=null?r._manifestHours.toFixed(1):""}</td><td>${esc(remark)}</td></tr>`;
+        }).join("")
+      : `<tr><td colspan="5">No open orders above 48 hours in the selected filters.</td></tr>`;
+  }
+
+  const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","WH remarks"];
+  document.getElementById("manifestThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+
+    "<th>Manifest SLA</th><th>Hours Taken</th><th>SLA Due</th></tr>";
+
+  document.getElementById("manifestTbody").innerHTML=rows.map(r=>{
+    const due=r._manifestDue?r._manifestDue.toLocaleString():"";
+    const hrs=r._manifestHours!=null?r._manifestHours.toFixed(1):"";
+    const cls=r._manifestSla==="Within SLA"?"sla-good":r._manifestSla==="Breached"?"sla-bad":r._manifestSla==="At Risk"?"sla-risk":"";
+    return "<tr>"+cols.map(c=>`<td>${esc(r[c]??"")}</td>`).join("")+
+      `<td class="${cls}">${esc(r._manifestSla)}</td><td>${hrs}</td><td>${esc(due)}</td></tr>`;
+  }).join("");
+
+  document.getElementById("manifestNote").textContent =
+    `${total.toLocaleString()} unique orders • same order population as Order Fulfillment • Manifest SLA = Order create date → Manifest Create Date • target 48 hours. Blank Actual_ShipDate/Manifest Create Date = Open + " Cancelled orders are shown separately and excluded from SLA %."; open orders are split into <48H, At Risk, and >48H using current browser time.`;
+}
+
+function clearManifestFilters(){
+  ["manifestWarehouse","manifestChannel","manifestStatus"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("manifestFrom").value="";
+  document.getElementById("manifestTo").value="";
+  applyManifestFilters();
+}
+
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    if(btn.dataset.tab==="manifestSlaTab"){
+      initManifestFilters();
+      applyManifestFilters();
+    }
+  });
+});
+["manifestWarehouse","manifestChannel","manifestStatus","manifestFrom","manifestTo"].forEach(id=>
+  document.getElementById(id).addEventListener("change",applyManifestFilters)
+);
+
+loadCentralExcel();
+
+/* ===== Picker Report module ===== */
+
+const PICKER_INITIAL_DATA = [];
+let pickerRows = [];
+
+function pickerVal(r,k){return r[k] ?? "";}
+function pickerNorm(v){return String(v??"").trim();}
+function pickerBinGroup(bin){
+  const s=pickerNorm(bin).toUpperCase();
+  // Treat the bin type as a dot-separated segment, so both
+  // "MTR.G1..." and "CA.MTR.G1..." are classified as MTR.
+  if(/(^|\.)SPR(\.|$)/.test(s)) return "SPR";
+  if(/(^|\.)MTR(\.|$)/.test(s)) return "MTR";
+  return "GP B2B";
+}
+function pickerNum(v){const n=Number(v); return Number.isFinite(n)?n:0}
+function parsePickerDate(v){
+  if(!v) return null;
+  if(v instanceof Date && !isNaN(v.getTime())) return v;
+  const s=String(v).trim();
+  // Report format: DD/MM/YYYY HH:MM AM/PM
+  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?:\s*([AP]M))?)?$/i);
+  if(m){
+    let hh=m[4]?Number(m[4]):0;
+    const mm=m[5]?Number(m[5]):0;
+    const ap=(m[6]||"").toUpperCase();
+    if(ap==="PM" && hh<12) hh+=12;
+    if(ap==="AM" && hh===12) hh=0;
+    const d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),hh,mm,0,0);
+    return isNaN(d.getTime())?null:d;
+  }
+  const d=new Date(s);
+  return isNaN(d.getTime())?null:d;
+}
+function pickerFmt(n){return Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:2})}
+function pickerUniqueCount(data,key){
+  return new Set(data.map(r=>pickerNorm(r[key])).filter(Boolean)).size;
+}
+function aggregatePicker(data){
+  const groups=["SPR","MTR","GP B2B"];
+  const out=new Map();
+  data.forEach(r=>{
+    const user=pickerNorm(pickerVal(r,"Pick User")) || "(Blank Pick User)";
+    const g=pickerBinGroup(pickerVal(r,"Bin"));
+    const key=user+"||"+g;
+    if(!out.has(key)) out.set(key,{user,group:g,picklists:new Set(),orders:new Set(),qty:0});
+    const x=out.get(key);
+    const pl=pickerNorm(pickerVal(r,"Picklist No."));
+    const ord=pickerNorm(pickerVal(r,"Order No"));
+    if(pl)x.picklists.add(pl);
+    if(ord)x.orders.add(ord);
+    x.qty+=pickerNum(pickerVal(r,"Qty"));
+  });
+  return [...out.values()].sort((a,b)=>a.user.localeCompare(b.user)||groups.indexOf(a.group)-groups.indexOf(b.group));
+}
+function pickerCoverageAndYesterday(){
+  const range=dateRangeFromRows(pickerRows,["Pick Date"]);
+  const cov=document.getElementById("pickerCoverage");
+  cov.textContent=range ? `Picker data coverage (Pick Date): ${formatDateKey(range.from)} → ${formatDateKey(range.to)} • ${pickerRows.length.toLocaleString()} report rows` : "Picker data coverage: no valid Pick Date found";
+  const y=yesterdayKey();
+  const yd=pickerRows.filter(r=>{
+    const d=parsePickerDate(pickerVal(r,"Pick Date"));
+    if(!d)return false;
+    const k=[d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+    return k===y;
+  });
+  const spr=yd.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))==="SPR");
+  const mtr=yd.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))==="MTR");
+  const gp=yd.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))==="GP B2B");
+  const cards=[
+    ["Pick Users",pickerUniqueCount(yd,"Pick User")],["Unique Orders",pickerUniqueCount(yd,"Order No")],["Order Qty",yd.reduce((a,r)=>a+pickerNum(pickerVal(r,"Qty")),0)],
+    ["SPR Orders",pickerUniqueCount(spr,"Order No")],["MTR Orders",pickerUniqueCount(mtr,"Order No")],["GP B2B Orders",pickerUniqueCount(gp,"Order No")]
+  ];
+  document.getElementById("pickerYesterdayNote").textContent=`Yesterday (${formatDateKey(y)}) based on Pick Date.`;
+  document.getElementById("pickerYesterdayCards").innerHTML=cards.map(([k,v])=>`<div class="summary-card"><small>${k}</small><strong>${pickerFmt(v)}</strong></div>`).join("");
+}
+
+function renderPicker(){
+  const user=document.getElementById("pickerUserFilter").value;
+  const bin=document.getElementById("pickerBinFilter").value;
+  const wh=document.getElementById("pickerWhFilter").value;
+  const date=document.getElementById("pickerDateFilter").value;
+  let data=pickerRows.filter(r=>{
+    if(user && pickerNorm(pickerVal(r,"Pick User"))!==user)return false;
+    if(bin && pickerBinGroup(pickerVal(r,"Bin"))!==bin)return false;
+    if(wh && pickerNorm(pickerVal(r,"Source WH"))!==wh)return false;
+    if(date){
+      const d=parsePickerDate(pickerVal(r,"Pick Date"));
+      if(!d) return false;
+      // Compare using the browser's local calendar date.
+      // Do not use toISOString(), because it converts the local date to UTC
+      // and can shift a midnight Pick Date to the previous calendar day.
+      const localDate = [
+        d.getFullYear(),
+        String(d.getMonth()+1).padStart(2,"0"),
+        String(d.getDate()).padStart(2,"0")
+      ].join("-");
+      if(localDate!==date)return false;
+    }
+    return true;
+  });
+
+  pickerCoverageAndYesterday();
+
+  const users=pickerUniqueCount(data,"Pick User");
+  const picklists=pickerUniqueCount(data,"Picklist No.");
+  const orders=pickerUniqueCount(data,"Order No");
+  const qty=data.reduce((s,r)=>s+pickerNum(pickerVal(r,"Qty")),0);
+  const spr=data.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))==="SPR");
+  const mtr=data.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))==="MTR");
+  const gp=data.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))==="GP B2B");
+  // Bin cards are LINE-ITEM counts, not unique Picklist counts.
+  // Every report row belonging to SPR / MTR / GP B2B counts as one line item.
+  const sprLineCount=spr.length;
+  const mtrLineCount=mtr.length;
+  const gpLineCount=gp.length;
+  document.getElementById("pickerCards").innerHTML=[
+    ["PICK USERS",users,"Current filtered report"],
+    ["PICKLIST COUNT",picklists,"Unique Picklists"],
+    ["ORDER COUNT",orders,"Unique Orders"],
+    ["ORDER QTY",qty,"Total Qty"],
+    ["SPR LINE COUNT",sprLineCount,"SPR line items"],
+    ["MTR LINE COUNT",mtrLineCount,"MTR line items"],
+    ["GP B2B LINE COUNT",gpLineCount,"GP B2B line items"]
+  ].map(x=>`<div class="picker-kpi"><small>${x[0]}</small><strong>${pickerFmt(x[1])}</strong><span class="kpi-pct">${x[2]}</span></div>`).join("");
+
+  const ag=aggregatePicker(data);
+  const byUser=new Map();
+  ag.forEach(x=>{
+    if(!byUser.has(x.user))byUser.set(x.user,{user:x.user,SPR:{p:0,o:0,q:0},MTR:{p:0,o:0,q:0},"GP B2B":{p:0,o:0,q:0}});
+    const z=byUser.get(x.user);
+    z[x.group]={p:x.picklists.size,o:x.orders.size,q:x.qty};
+  });
+  let html=`<thead><tr><th rowspan="2">Pick User</th>${["SPR","MTR","GP B2B"].map(g=>`<th class="group" colspan="3">${g}</th>`).join("")}<th rowspan="2">Total Picklist Count</th><th rowspan="2">Total Order Count</th><th rowspan="2">Total Qty</th></tr><tr>${["SPR","MTR","GP B2B"].map(()=>"<th>Picklist Count</th><th>Order Count</th><th>Qty</th>").join("")}</tr></thead><tbody>`;
+  byUser.forEach(z=>{
+    const tp=z.SPR.p+z.MTR.p+z["GP B2B"].p, to=z.SPR.o+z.MTR.o+z["GP B2B"].o, tq=z.SPR.q+z.MTR.q+z["GP B2B"].q;
+    html+=`<tr><td><b>${z.user}</b></td>${["SPR","MTR","GP B2B"].map(g=>`<td>${pickerFmt(z[g].p)}</td><td>${pickerFmt(z[g].o)}</td><td>${pickerFmt(z[g].q)}</td>`).join("")}<td><b>${pickerFmt(tp)}</b></td><td><b>${pickerFmt(to)}</b></td><td><b>${pickerFmt(tq)}</b></td></tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("pickerTable").innerHTML=html;
+
+  // Dedicated order-wise summary: one row per picker, unique Order No split by bin group.
+  const orderByPicker=new Map();
+  data.forEach(r=>{
+    const user=pickerNorm(pickerVal(r,"Pick User")) || "(Blank Pick User)";
+    const ord=pickerNorm(pickerVal(r,"Order No"));
+    if(!ord)return;
+    const g=pickerBinGroup(pickerVal(r,"Bin"));
+    if(!orderByPicker.has(user)) orderByPicker.set(user,{SPR:new Set(),MTR:new Set(),"GP B2B":new Set()});
+    orderByPicker.get(user)[g].add(ord);
+  });
+  let orderHtml='<thead><tr><th>Pick User</th><th>SPR Orders</th><th>MTR Orders</th><th>GP B2B Orders</th><th>Total Unique Orders</th></tr></thead><tbody>';
+  [...orderByPicker.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([user,z])=>{
+    const total=new Set([...z.SPR,...z.MTR,...z["GP B2B"]]).size;
+    orderHtml+=`<tr><td><b>${esc(user)}</b></td><td>${pickerFmt(z.SPR.size)}</td><td>${pickerFmt(z.MTR.size)}</td><td>${pickerFmt(z["GP B2B"].size)}</td><td><b>${pickerFmt(total)}</b></td></tr>`;
+  });
+  orderHtml+='</tbody>';
+  document.getElementById("pickerOrderSummaryTable").innerHTML=orderHtml;
+
+  const bt=["SPR","MTR","GP B2B"].map(g=>{
+    const d=data.filter(r=>pickerBinGroup(pickerVal(r,"Bin"))===g);
+    return {g,p:pickerUniqueCount(d,"Picklist No."),o:pickerUniqueCount(d,"Order No"),q:d.reduce((s,r)=>s+pickerNum(pickerVal(r,"Qty")),0)};
+  });
+  document.getElementById("pickerBinTable").innerHTML=`<thead><tr><th>Bin Group</th><th>Unique Picklists</th><th>Unique Orders</th><th>Order Qty</th></tr></thead><tbody>${bt.map(x=>`<tr><td><b>${x.g}</b></td><td>${pickerFmt(x.p)}</td><td>${pickerFmt(x.o)}</td><td>${pickerFmt(x.q)}</td></tr>`).join("")}</tbody>`;
+}
+function populatePickerFilters(){
+  const fill=(id,vals,first)=>{
+    const el=document.getElementById(id); const old=el.value;
+    el.innerHTML=`<option value="">${first}</option>`+[...vals].sort().map(v=>`<option value="${String(v).replace(/"/g,"&quot;")}">${v}</option>`).join("");
+    if([...el.options].some(o=>o.value===old))el.value=old;
+  };
+  // IMPORTANT: these IDs must match the actual Picker Report controls.
+  fill("pickerUserFilter",new Set(pickerRows.map(r=>pickerNorm(pickerVal(r,"Pick User"))).filter(Boolean)),"All Pick Users");
+  fill("pickerWhFilter",new Set(pickerRows.map(r=>pickerNorm(pickerVal(r,"Source WH"))).filter(Boolean)),"All Warehouses");
+}
+const PICKER_DB_NAME = "VinculumWMSPickerDB";
+const PICKER_DB_STORE = "currentReport";
+const PICKER_DB_KEY = "latest";
+
+function openPickerDB(){
+  return new Promise((resolve,reject)=>{
+    if(!window.indexedDB){
+      reject(new Error("Browser IndexedDB is not available"));
+      return;
+    }
+    const req=indexedDB.open(PICKER_DB_NAME,1);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(PICKER_DB_STORE)){
+        db.createObjectStore(PICKER_DB_STORE);
+      }
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error("Could not open local Picker storage"));
+  });
+}
+
+async function savePickerLocal(data,name){
+  try{
+    const db=await openPickerDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(PICKER_DB_STORE,"readwrite");
+      tx.objectStore(PICKER_DB_STORE).put({
+        name:name,
+        rows:data,
+        savedAt:new Date().toISOString()
+      },PICKER_DB_KEY);
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error||new Error("Could not save Picker Report locally"));
+    });
+    db.close();
+  }catch(err){
+    console.warn("Picker local save failed:",err);
+  }
+}
+
+async function getPickerLocal(){
+  try{
+    const db=await openPickerDB();
+    const result=await new Promise((resolve,reject)=>{
+      const tx=db.transaction(PICKER_DB_STORE,"readonly");
+      const req=tx.objectStore(PICKER_DB_STORE).get(PICKER_DB_KEY);
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error||new Error("Could not read local Picker Report"));
+    });
+    db.close();
+    return result;
+  }catch(err){
+    console.warn("Picker local read failed:",err);
+    return null;
+  }
+}
+
+async function clearPickerLocal(){
+  try{
+    const db=await openPickerDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(PICKER_DB_STORE,"readwrite");
+      tx.objectStore(PICKER_DB_STORE).delete(PICKER_DB_KEY);
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error||new Error("Could not clear local Picker Report"));
+    });
+    db.close();
+  }catch(err){
+    console.warn("Picker local clear failed:",err);
+  }
+}
+
+function loadPickerObjects(data,name){
+  pickerRows=data;
+  document.getElementById("pickerSourceLine").textContent=
+    `Loaded: ${name} • ${pickerRows.length.toLocaleString()} report rows`;
+  populatePickerFilters();
+  renderPicker();
+}
+
+async function loadLatestPickerFromGithub(){
+  // PUBLIC LIVE PICKER SOURCE:
+  // Every visitor to GitHub Pages reads the same stable CSV maintained by
+  // the Picker GitHub Action. No browser-local Picker copy is used here.
+  const path = "picker-data.csv";
+  const cacheBust = Date.now() + "-" + Math.random().toString(36).slice(2);
+
+  try{
+    const response = await fetch(path + "?v=" + cacheBust, {
+      cache:"no-store",
+      headers:{"Cache-Control":"no-cache"}
+    });
+
+    if(!response.ok) throw new Error(response.status+" "+response.statusText);
+
+    const text = await response.text();
+    if(!text.trim()) throw new Error("latest-picker-report.csv is empty");
+
+    const wb = XLSX.read(text,{type:"string",cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = normalizeRows(XLSX.utils.sheet_to_json(ws,{defval:""}));
+
+    if(!data.length) throw new Error("latest-picker-report.csv has no rows");
+
+    const required=["Pick User","Bin","Qty","Picklist No.","Order No","Source WH"];
+    const keys=Object.keys(data[0]||{});
+    const missing=required.filter(k=>!keys.includes(k));
+    if(missing.length) throw new Error("Invalid live Picker report. Missing: "+missing.join(", "));
+
+    loadPickerObjects(data,"LIVE Picker Report • GitHub");
+    document.getElementById("pickerDateFilter").value="";
+    renderPicker();
+
+    const stamp = new Date().toLocaleString();
+    document.getElementById("pickerSourceLine").innerHTML =
+      `LIVE Picker Report • ${data.length.toLocaleString()} report rows • Updated/loaded ${stamp}
+       <button id="pickerLiveRefreshBtn" type="button" onclick="refreshPickerLive()" style="margin-left:8px;padding:4px 9px;border-radius:6px;font-size:11px;background:#fff;color:#182230;border:1px solid #d4dbe3;cursor:pointer">↻ Refresh</button>`;
+  }catch(err){
+    pickerRows=[];
+    document.getElementById("pickerSourceLine").innerHTML =
+      `LIVE Picker Report unavailable • ${err.message}
+       <button id="pickerLiveRefreshBtn" type="button" onclick="refreshPickerLive()" style="margin-left:8px;padding:4px 9px;border-radius:6px;font-size:11px;background:#fff;color:#182230;border:1px solid #d4dbe3;cursor:pointer">↻ Retry</button>`;
+    populatePickerFilters();
+    renderPicker();
+    console.warn("Live Picker Report unavailable:",err);
+  }
+}
+
+async function refreshPickerLive(){
+  const btn=document.getElementById("pickerLiveRefreshBtn");
+  if(btn){
+    btn.disabled=true;
+    btn.textContent="↻ Refreshing…";
+  }
+  document.getElementById("pickerSourceLine").textContent="Refreshing LIVE Picker Report…";
+  try{
+    await loadLatestPickerFromGithub();
+  }finally{
+    const b=document.getElementById("pickerLiveRefreshBtn");
+    if(b){
+      b.disabled=false;
+      b.textContent="↻ Refresh";
+    }
+  }
+}
+
+
+["pickerUserFilter","pickerBinFilter","pickerWhFilter","pickerDateFilter"]
+  .forEach(id=>document.getElementById(id).addEventListener("change",renderPicker));
+
+// Initial load: always use the public GitHub live Picker CSV.
+loadLatestPickerFromGithub();
+
+
+/* ===== Offroll Attendance module =====
+   Source: Google Sheet
+   Sheet ID: 1gcfb1tsE4oRb28F98Afi7xu06GAflJocRzUeWwnfvfQ
+   GID: 642260073
+*/
+const OFFROLL_SHEET_ID = "1gcfb1tsE4oRb28F98Afi7xu06GAflJocRzUeWwnfvfQ";
+const OFFROLL_GID = "642260073";
+let offrollRows = [];
+let offrollDates = [];
+
+function offrollNorm(v){ return String(v ?? "").trim(); }
+
+function offrollDateKey(v){
+  const s=offrollNorm(v);
+  if(!s) return "";
+  let d=parseSlaDate(s);
+  if(d && !isNaN(d.getTime())) return [
+    d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")
+  ].join("-");
+  // Google Sheets commonly exposes headers like "26-July" or "1-August".
+  const m=s.match(/^(\d{1,2})[-\s\/]([A-Za-z]+)(?:[-\s\/](\d{4}))?$/);
+  if(m){
+    const monthMap={january:0,february:1,march:2,april:3,may:4,june:5,july:6,august:7,september:8,october:9,november:10,december:11};
+    const mo=monthMap[String(m[2]).toLowerCase()];
+    if(mo!==undefined){
+      const y=Number(m[3]||new Date().getFullYear());
+      const dt=new Date(y,mo,Number(m[1]));
+      if(!isNaN(dt.getTime())) return [dt.getFullYear(),String(dt.getMonth()+1).padStart(2,"0"),String(dt.getDate()).padStart(2,"0")].join("-");
+    }
+  }
+  return "";
+}
+
+function offrollRawStatus(v){
+  return offrollNorm(v).toUpperCase();
+}
+
+function offrollStatus(v){
+  const s=offrollRawStatus(v);
+  if(s==="P") return "P";
+  if(s==="N") return "N";
+  if(s==="L") return "L";
+  if(s==="HD") return "HD";
+  return "";
+}
+
+function offrollStatusLabel(v){
+  const s=offrollStatus(v);
+  return s==="P" ? "Present" :
+         s==="N" ? "Night Present" :
+         s==="L" ? "Leave" :
+         s==="HD" ? "Half Day" :
+         "Ignored";
+}
+
+function offrollStatusClass(v){
+  const s=offrollStatus(v);
+  return s==="P"?"offroll-status-p":
+         s==="N"?"offroll-status-n":
+         s==="HD"?"offroll-status-hd":
+         s==="L"?"offroll-status-l":"";
+}
+
+function offrollCleanHeader(v){
+  return String(v ?? "")
+    .replace(/[\uFEFF\u200B-\u200D\u2060]/g,"")
+    .replace(/\u00A0/g," ")
+    .trim()
+    .replace(/\s+/g," ");
+}
+
+function offrollCanonicalHeader(v){
+  const h=offrollCleanHeader(v);
+  const key=h.toLowerCase().replace(/[^a-z0-9]/g,"");
+  const aliases={
+    sno:"S.No.",
+    serialno:"S.No.",
+    empid:"Emp ID",
+    employeeid:"Emp ID",
+    name:"Name",
+    fathername:"Father Name",
+    dept:"Dept",
+    department:"Dept",
+    designation:"Designation",
+    doj:"DOJ",
+    dateofjoining:"DOJ",
+    status:"Status",
+    employeestatus:"Status",
+    vendor:"Vendor"
+  };
+  return aliases[key] || h;
+}
+
+function offrollCsvToRows(text){
+  const wb=XLSX.read(text,{type:"string",cellDates:true});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:true});
+  if(!matrix.length) return [];
+
+  let headerRowIndex=-1;
+  for(let i=0;i<Math.min(matrix.length,10);i++){
+    const normalized=(matrix[i]||[]).map(offrollCanonicalHeader);
+    if(normalized.includes("Emp ID") &&
+       normalized.includes("Name") &&
+       normalized.includes("Dept") &&
+       normalized.includes("Vendor")){
+      headerRowIndex=i;
+      break;
+    }
+  }
+  if(headerRowIndex<0) throw new Error("Attendance header row not found");
+
+  const rawHeaders=matrix[headerRowIndex]||[];
+  const headers=rawHeaders.map(offrollCanonicalHeader);
+
+  return matrix.slice(headerRowIndex+1).map(row=>{
+    const obj={};
+
+    headers.forEach((h,i)=>{
+      if(h) obj[h]=row[i] ?? "";
+    });
+
+    // Google GViz can return an empty header for the visible S.No. and DOJ
+    // columns in this tracker. Recover those fields by their fixed positions.
+    if(!Object.prototype.hasOwnProperty.call(obj,"S.No.")){
+      obj["S.No."]=row[0] ?? "";
+    }
+    if(!Object.prototype.hasOwnProperty.call(obj,"DOJ")){
+      obj["DOJ"]=row[6] ?? "";
+    }
+
+    return obj;
+  }).filter(r=>Object.keys(r).length);
+}
+
+function offrollPrepare(rows){
+  if(!rows.length) return [];
+  const first=rows[0];
+  const keys=Object.keys(first);
+  // First nine columns are the employee master fields in the supplied tracker.
+  // Everything after Vendor is treated as a daily attendance column.
+  const base=["S.No.","Emp ID","Name","Father Name","Dept","Designation","DOJ","Status","Vendor"];
+  const dateKeys=keys.filter(k=>!base.includes(k));
+  offrollDates=dateKeys.map(k=>({key:k,label:k,date:offrollDateKey(k)})).filter(x=>x.date);
+  // If duplicate date labels exist, keep the first one.
+  const seen=new Set();
+  offrollDates=offrollDates.filter(x=>{if(seen.has(x.date))return false;seen.add(x.date);return true;}).sort((a,b)=>a.date.localeCompare(b.date));
+  return rows.map(r=>{
+    const x={...r};
+    x.__empId=offrollNorm(r["Emp ID"]);
+    x.__name=offrollNorm(r["Name"]);
+    x.__dept=offrollNorm(r["Dept"]);
+    x.__vendor=offrollNorm(r["Vendor"]);
+    x.__empStatus=offrollNorm(r["Status"]);
+    x.__dateStatus={};
+    offrollDates.forEach(d=>x.__dateStatus[d.date]=offrollStatus(r[d.key]));
+    return x;
+  });
+}
+
+function offrollFilteredRows(){
+  const dept=document.getElementById("offrollDept").value;
+  const vendor=document.getElementById("offrollVendor").value;
+  const empStatus=document.getElementById("offrollEmpStatus").value;
+  const search=offrollNorm(document.getElementById("offrollSearch").value).toLowerCase();
+  return offrollRows.filter(r=>{
+    if(dept && r.__dept!==dept)return false;
+    if(vendor && r.__vendor!==vendor)return false;
+    if(empStatus && r.__empStatus!==empStatus)return false;
+    if(search && !(r.__empId.toLowerCase().includes(search)||r.__name.toLowerCase().includes(search)))return false;
+    return true;
+  });
+}
+
+function offrollSelectedDate(){
+  return document.getElementById("offrollDate").value;
+}
+
+function offrollTodayKey(){
+  const d=new Date();
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+
+function offrollIsFutureDate(dateKey){
+  return !!dateKey && dateKey > offrollTodayKey();
+}
+
+function offrollCountStatus(rows,dateKey){
+  let p=0,n=0,hd=0,l=0,a=0,ignored=0;
+  if(!dateKey || offrollIsFutureDate(dateKey)){
+    return {p,n,hd,l,a,ignored,total:0};
+  }
+  rows.forEach(r=>{
+    const raw=offrollRawStatus(r.__dateStatus[dateKey]);
+    if(raw==="P")p++;
+    else if(raw==="N")n++;
+    else if(raw==="HD")hd++;
+    else if(raw==="L")l++;
+    else if(raw==="")a++;
+    else ignored++;
+  });
+  return {p,n,hd,l,a,ignored,total:rows.length};
+}
+
+function offrollPopulateFilters(){
+  const fill=(id,vals,label)=>{
+    const el=document.getElementById(id),old=el.value,arr=unique(vals);
+    el.innerHTML=`<option value="">${label}</option>`+arr.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+    if(arr.includes(old))el.value=old;
+  };
+  fill("offrollDept",offrollRows.map(r=>r.__dept),"All Departments");
+  fill("offrollVendor",offrollRows.map(r=>r.__vendor),"All Vendors");
+  fill("offrollEmpStatus",offrollRows.map(r=>r.__empStatus),"All Employee Status");
+  const dateEl=document.getElementById("offrollDate");
+  if(!dateEl.value && offrollDates.length){
+    const today=offrollTodayKey();
+    const usable=offrollDates.filter(d=>d.date<=today);
+    if(usable.length) dateEl.value=usable[usable.length-1].date;
+  }
+}
+
+function offrollRender(){
+  const rows=offrollFilteredRows();
+  const selected=offrollSelectedDate();
+  const day=selected ? offrollCountStatus(rows,selected) : {p:0,n:0,hd:0,l:0,a:0,total:rows.length};
+  const attendanceDays=offrollDates.length;
+  const active=rows.filter(r=>r.__empStatus.toLowerCase()==="active").length;
+  const absent=day.a;
+  const present=day.p+day.n;
+  const attendancePct=day.total ? (present/day.total*100) : 0;
+
+  document.getElementById("offrollKpis").innerHTML=[
+    ["Employees",rows.length,""],
+    ["Active Employees",active,""],
+    ["Present (P)",day.p,"offroll-kpi-good"],
+    ["Night Present (N)",day.n,"offroll-kpi-good"],
+    ["Half Day (HD)",day.hd,"offroll-kpi-risk"],
+    ["Leave (L)",day.l,""],
+    ["Absent (Blank)",absent,"offroll-kpi-bad"]
+  ].map(([k,v,c])=>`<div class="kpi ${c}"><small>${k}</small><strong>${Number(v).toLocaleString()}</strong></div>`).join("");
+
+  const statusPairs=[
+    ["Present",day.p],["Night Present",day.n],["Half Day",day.hd],["Leave",day.l],["Absent",day.a]
+  ].filter(x=>x[1]||day.total);
+  hbar("offrollStatusChart","",statusPairs);
+  document.getElementById("offrollStatusChart").insertAdjacentHTML("afterbegin",
+    `<div class="note">${selected ? `Selected date: ${formatDateKey(selected)} • Attendance coverage: ${attendancePct.toFixed(1)}% (P + N)` : "Select an attendance date to see daily status."}</div>`);
+
+  hbar("offrollDeptChart","",counts(rows,"Dept"));
+
+  const daily=offrollDates.filter(d=>d.date<=offrollTodayKey()).map(d=>{
+    const c=offrollCountStatus(rows,d.date);
+    return [d.date,c.p+c.n];
+  }).slice(-14);
+  const max=Math.max(...daily.map(x=>x[1]),1);
+  document.getElementById("offrollDayChart").innerHTML=daily.length ? daily.map(([d,v])=>
+    `<div class="bar"><em>${v}</em><i style="height:${Math.max(2,v/max*190)}px"></i><span>${esc(d.slice(5))}</span></div>`
+  ).join("") : "<div class='note'>No attendance dates found</div>";
+
+  // Employee-wise table. Selected date is shown first, followed by all available days.
+  const dateCols=offrollDates;
+  let thead=`<thead><tr><th class="sticky-left">S.No.</th><th class="sticky-left">Emp ID</th><th class="sticky-left">Name</th><th>Dept</th><th>Designation</th><th>DOJ</th><th>Emp Status</th><th>Vendor</th>`;
+  dateCols.forEach(d=>thead+=`<th>${esc(d.label)}</th>`);
+  thead+="</tr></thead><tbody>";
+  const body=rows.map((r,i)=>{
+    let tr=`<tr><td>${esc(r["S.No."]??i+1)}</td><td><b>${esc(r.__empId)}</b></td><td><b>${esc(r.__name)}</b></td><td>${esc(r.__dept)}</td><td>${esc(r["Designation"]??"")}</td><td>${esc(r["DOJ"]??"")}</td><td>${esc(r.__empStatus)}</td><td>${esc(r.__vendor)}</td>`;
+    dateCols.forEach(d=>{
+      const raw=offrollRawStatus(r.__dateStatus[d.date]);
+      const known=offrollStatus(raw);
+      const future=offrollIsFutureDate(d.date);
+      const display=future ? (raw||"—") : (known || (raw ? raw : "—"));
+      const title=future ? "Future date — not counted" :
+        (known ? offrollStatusLabel(known) :
+         (raw ? "Ignored status — not counted" : "Absent"));
+      tr+=`<td class="${future?"":offrollStatusClass(known)}" title="${esc(title)}">${esc(display)}</td>`;
+    });
+    return tr+"</tr>";
+  }).join("");
+  document.getElementById("offrollTable").innerHTML=thead+body+"</tbody>";
+  document.getElementById("offrollTableNote").textContent =
+    `${rows.length.toLocaleString()} employees • ${attendanceDays} attendance dates • Selected date: ${selected ? formatDateKey(selected) : "not selected"} • P/N counted as present; HD as half day; L as leave; blank as absent.`;
+}
+
+async function loadOffrollFromGoogleSheet(){
+  const source=document.getElementById("offrollSourceLine");
+  source.textContent="LIVE Offroll Google Sheet • loading…";
+  try{
+    const url=`https://docs.google.com/spreadsheets/d/${OFFROLL_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${OFFROLL_GID}&_=${Date.now()}`;
+    const response=await fetch(url,{cache:"no-store"});
+    if(!response.ok) throw new Error(`Google Sheet returned ${response.status}`);
+    const text=await response.text();
+    if(!text.trim()) throw new Error("Google Sheet returned no data");
+    const rows=offrollCsvToRows(text);
+    if(!rows.length) throw new Error("No attendance rows found");
+    const required=["Emp ID","Name","Dept","Designation","Status","Vendor"];
+    const missing=required.filter(k=>!Object.prototype.hasOwnProperty.call(rows[0],k));
+    if(missing.length) throw new Error("Missing columns: "+missing.join(", "));
+    const prepared=offrollPrepare(rows);
+    if(!offrollDates.length) throw new Error("No daily attendance date columns found");
+    offrollRows=prepared;
+    offrollPopulateFilters();
+    offrollRender();
+    source.textContent=`LIVE Offroll Google Sheet • Daily Attendance (26 July-25 Aug 2026) • ${prepared.length.toLocaleString()} employees • ${offrollDates.length} attendance dates • Last loaded ${new Date().toLocaleString()}`;
+    return true;
+  }catch(err){
+    offrollRows=[];
+    offrollDates=[];
+    offrollPopulateFilters();
+    offrollRender();
+    source.textContent=`LIVE Offroll Google Sheet unavailable • ${err.message}`;
+    console.warn("Offroll Google Sheet unavailable:",err);
+    return false;
+  }
+}
+
+async function refreshOffrollLive(){
+  const btn=document.getElementById("offrollRefreshBtn");
+  if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
+  try{await loadOffrollFromGoogleSheet();}
+  finally{if(btn){btn.disabled=false;btn.textContent="↻ Refresh Google Sheet";}}
+}
+
+function clearOffrollFilters(){
+  ["offrollDept","offrollVendor","offrollEmpStatus"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("offrollSearch").value="";
+  if(offrollDates.length){
+    const today=offrollTodayKey();
+    const usable=offrollDates.filter(d=>d.date<=today);
+    document.getElementById("offrollDate").value=usable.length ? usable[usable.length-1].date : "";
+  }
+  offrollRender();
+}
+
+["offrollDept","offrollVendor","offrollEmpStatus","offrollDate","offrollSearch"].forEach(id=>{
+  document.getElementById(id).addEventListener("input",offrollRender);
+  document.getElementById(id).addEventListener("change",offrollRender);
+});
+
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    if(btn.dataset.tab==="offrollTab" && !offrollRows.length) loadOffrollFromGoogleSheet();
+  });
+});
+
+
+loadOffrollFromGoogleSheet();
+
+/* ===== Offroll Attendance View / Employee Login ===== */
+let offrollLoggedEmployee = null;
+
+function offrollViewDateKeyFromAny(v){
+  const s=offrollNorm(v);
+  if(!s) return "";
+  const direct=offrollDateKey(s);
+  if(direct) return direct;
+
+  // Common DOJ formats if the source contains a date-time string.
+  const d=parseSlaDate(s);
+  if(d && !isNaN(d.getTime())){
+    return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+  }
+  return "";
+}
+
+function offrollViewPasswordMatches(input, doj){
+  const a=offrollNorm(input);
+  const b=offrollNorm(doj);
+  if(!a || !b) return false;
+
+  const ak=offrollViewDateKeyFromAny(a);
+  const bk=offrollViewDateKeyFromAny(b);
+  if(ak && bk) return ak===bk;
+
+  // Fallback: compare compacted date strings if parsing is not possible.
+  const compact=x=>x.toLowerCase().replace(/[^a-z0-9]/g,"");
+  return compact(a)===compact(b);
+}
+
+function offrollViewSetError(message){
+  const el=document.getElementById("offrollLoginError");
+  if(!el) return;
+  el.textContent=message;
+  el.classList.toggle("show",!!message);
+}
+
+function offrollViewFindEmployee(empId){
+  const wanted=offrollNorm(empId).toLowerCase();
+  if(!wanted) return null;
+  return offrollRows.find(r=>offrollNorm(r["Emp ID"]).toLowerCase()===wanted) || null;
+}
+
+function offrollViewStatusInfo(raw){
+  const s=offrollRawStatus(raw);
+  if(s==="P") return {label:"Present",cls:"offroll-view-status-p"};
+  if(s==="N") return {label:"Night Present",cls:"offroll-view-status-n"};
+  if(s==="HD") return {label:"Half Day",cls:"offroll-view-status-hd"};
+  if(s==="L") return {label:"Leave",cls:"offroll-view-status-l"};
+  if(s==="") return {label:"Absent",cls:"offroll-view-status-a"};
+  return {label:"Ignored",cls:""};
+}
+
+function offrollViewRender(employee){
+  if(!employee) return;
+
+  const today=offrollTodayKey();
+  const usableDates=offrollDates.filter(d=>d.date<=today);
+  const todayDate=usableDates.find(d=>d.date===today) || null;
+
+  let todayRaw="";
+  if(todayDate) todayRaw=offrollRawStatus(employee.__dateStatus[todayDate.date]);
+  const todayInfo=todayDate ? offrollViewStatusInfo(todayRaw) : {label:"No attendance column",cls:""};
+
+  // History counts only recognized statuses on dates up to today.
+  let present=0,night=0,half=0,leave=0,absent=0,ignored=0;
+  usableDates.forEach(d=>{
+    const s=offrollRawStatus(employee.__dateStatus[d.date]);
+    if(s==="P")present++;
+    else if(s==="N")night++;
+    else if(s==="HD")half++;
+    else if(s==="L")leave++;
+    else if(s==="")absent++;
+    else ignored++;
+  });
+
+  document.getElementById("offrollViewKpis").innerHTML=[
+    ["Today",todayDate ? todayInfo.label : "Not available",""],
+    ["Present (P)",present,""],
+    ["Night Present (N)",night,""],
+    ["Half Day (HD)",half,""],
+    ["Leave (L)",leave,""],
+    ["Absent (Blank)",absent,""],
+    ["Ignored (NA etc.)",ignored,""]
+  ].map(([k,v,c])=>`<div class="offroll-view-kpi"><small>${k}</small><strong class="${todayDate && k==="Today" ? todayInfo.cls : ""}">${esc(String(v))}</strong></div>`).join("");
+
+  document.getElementById("offrollViewEmployee").innerHTML=[
+    ["Emp ID",employee.__empId],
+    ["Name",employee.__name],
+    ["Department",employee.__dept],
+    ["Designation",employee["Designation"]??""],
+    ["DOJ",employee["DOJ"]??""],
+    ["Employee Status",employee.__empStatus],
+    ["Vendor",employee.__vendor]
+  ].map(([k,v])=>`<div class="offroll-view-employee-item"><small>${esc(k)}</small><b>${esc(v||"—")}</b></div>`).join("");
+
+  const rows=usableDates.slice().reverse().map(d=>{
+    const raw=offrollRawStatus(employee.__dateStatus[d.date]);
+    const info=offrollViewStatusInfo(raw);
+    const display=raw ? raw : "—";
+    const title=raw==="P"||raw==="N"||raw==="HD"||raw==="L"
+      ? info.label
+      : raw ? "Ignored status — not counted" : "Blank = Absent";
+    return `<tr><td>${esc(formatDateKey(d.date))}</td><td><b class="${info.cls}">${esc(display)}</b></td><td>${esc(title)}</td></tr>`;
+  }).join("");
+
+  document.getElementById("offrollViewTable").innerHTML=
+    `<thead><tr><th>Attendance Date</th><th>Status</th><th>Meaning</th></tr></thead><tbody>${rows || `<tr><td colspan="3">No attendance dates available.</td></tr>`}</tbody>`;
+
+  document.getElementById("offrollViewNote").textContent=
+    `${employee.__name || employee.__empId} • Showing ${usableDates.length} dates up to today (${formatDateKey(today)}). P/N/HD/L are counted; blank = absent; other values such as NA are ignored. Future dates are not counted.`;
+}
+
+function offrollViewLoginSubmit(){
+  offrollViewSetError("");
+
+  if(!offrollRows.length){
+    offrollViewSetError("Live attendance data abhi load nahi hua. Pehle Refresh karein.");
+    return;
+  }
+
+  const empId=document.getElementById("offrollLoginEmpId").value;
+  const password=document.getElementById("offrollLoginPassword").value;
+  const employee=offrollViewFindEmployee(empId);
+
+  if(!employee){
+    offrollViewSetError("Invalid Emp ID.");
+    return;
+  }
+
+  if(!offrollViewPasswordMatches(password,employee["DOJ"])){
+    offrollViewSetError("Invalid password. Password = DOJ hai.");
+    return;
+  }
+
+  offrollLoggedEmployee=employee;
+  document.getElementById("offrollViewLogin").style.display="none";
+  document.getElementById("offrollViewPrivate").classList.add("show");
+  document.getElementById("offrollViewLogoutBtn").style.display="";
+  document.getElementById("offrollViewLoginEmpId").value="";
+  document.getElementById("offrollViewLoginPassword").value="";
+  offrollViewRender(employee);
+}
+
+function offrollViewLogout(){
+  offrollLoggedEmployee=null;
+  document.getElementById("offrollViewPrivate").classList.remove("show");
+  document.getElementById("offrollViewLogin").style.display="";
+  document.getElementById("offrollViewLogoutBtn").style.display="none";
+  document.getElementById("offrollLoginForm").reset();
+  offrollViewSetError("");
+}
+
+async function refreshOffrollViewLive(){
+  const btn=document.getElementById("offrollViewRefreshBtn");
+  if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
+  try{
+    await loadOffrollFromGoogleSheet();
+    if(offrollLoggedEmployee){
+      const refreshed=offrollViewFindEmployee(offrollLoggedEmployee.__empId);
+      if(refreshed && offrollViewPasswordMatches(offrollLoggedEmployee["DOJ"],refreshed["DOJ"])){
+        offrollLoggedEmployee=refreshed;
+        offrollViewRender(refreshed);
+      }else{
+        offrollViewLogout();
+      }
+    }
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="↻ Refresh";}
+  }
+}
+
+// Keep the employee view synchronized after the main Offroll Google Sheet refresh.
+const _originalLoadOffrollFromGoogleSheet = loadOffrollFromGoogleSheet;
+loadOffrollFromGoogleSheet = async function(){
+  const result=await _originalLoadOffrollFromGoogleSheet();
+  const source=document.getElementById("offrollViewSourceLine");
+  if(source){
+    source.textContent=document.getElementById("offrollSourceLine")?.textContent || "LIVE Offroll Google Sheet";
+  }
+  if(offrollLoggedEmployee){
+    const refreshed=offrollViewFindEmployee(offrollLoggedEmployee.__empId);
+    if(refreshed){
+      offrollLoggedEmployee=refreshed;
+      offrollViewRender(refreshed);
+    }
+  }
+  return result;
+};
+
+// When the new view tab is opened, use the same live Google Sheet data.
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    if(btn.dataset.tab==="offrollViewTab"){
+      const source=document.getElementById("offrollViewSourceLine");
+      if(source) source.textContent=document.getElementById("offrollSourceLine")?.textContent || "LIVE Offroll Google Sheet • loading…";
+      if(!offrollRows.length) loadOffrollFromGoogleSheet();
+      else if(offrollLoggedEmployee) offrollViewRender(offrollLoggedEmployee);
+    }
+  });
+});
+
+</script>
+<!-- Total-link page-view counter only. Existing dashboard tabs/data logic are unchanged. -->
+<script src="https://counterapi.com/c.js" async></script>
+
+<script>
+/* ===== B2C Dashboard — Phase 1 ===== */
+let B2C_LIVE_ROWS = [];
+let B2C_DATA_LOADED = false;
+
+const B2C_SHIP_BY_CHANNELS = [];
+const B2C_24H_CHANNELS = ["Meesho","Cloudtail DF","Flipkart_SKD","Amazon EasyShip","FirstCry","Shopify","PW_Store","Manual_Orders"];
+
+function b2cNorm(v){
+  return String(v ?? "").trim().toLowerCase().replace(/[\s-]+/g,"_");
+}
+function b2cChannel(row){
+  const v=get(row,["Channel Name","channel_name","finance_category","Finance Category"]);
+  const n=b2cNorm(v);
+  const map={
+    "meesho":"Meesho",
+    "cloudtail_df":"Cloudtail DF",
+    "flipkart_skd":"Flipkart_SKD",
+    "amazon_easyship":"Amazon EasyShip",
+    "firstcry":"FirstCry",
+    "shopify":"Shopify",
+    "pw_store":"PW_Store",
+    "manual_orders":"Manual_Orders"
+  };
+  return map[n] || "";
+}
+function b2cOrderCreate(row){
+  return parseSlaDate(get(row,["Order create date","OrderDate"]));
+}
+function b2cShipBy(row){
+  return parseSlaDate(get(row,[
+    "Ship By Date","Ship By date","Ship by date","ShipByDate","Ship By","Shipbydate"
+  ]));
+}
+function b2cActualShip(row){
+  return parseSlaDate(get(row,["Actual_ShipDate","Actual_ShipDate "]));
+}
+function b2cAllocationDate(row){
+  return parseSlaDate(get(row,["Allocation Date","AllocationDate","AllocationTime","Allocation Time"]));
+}
+function b2cDateKey(v){
+  const d=parseSlaDate(v);
+  if(!d)return "";
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+function b2cSourceRows(){
+  // B2C is maintained independently in b2c-data.json.
+  // Do not let the central Vinculum workbook override this live B2C source.
+  return B2C_DATA_LOADED ? B2C_LIVE_ROWS : [];
+}
+
+async function loadB2cLiveData(){
+  const btn=document.getElementById("b2cRefreshBtn");
+  const coverage=document.getElementById("b2cCoverage");
+
+  try{
+    if(btn){btn.disabled=true;btn.textContent="↻ Loading latest…";}
+    if(coverage) coverage.textContent="B2C data: loading latest published file…";
+
+    const cacheBust=Date.now()+"-"+Math.random().toString(36).slice(2);
+
+    // Primary source: JSON generated by the B2C GitHub Action from the
+    // latest B2C Excel. The dashboard never uses embedded old B2C rows.
+    const response=await fetch("b2c-data.json?v="+cacheBust,{
+      cache:"no-store",
+      headers:{"Cache-Control":"no-cache","Pragma":"no-cache"}
+    });
+    if(!response.ok) throw new Error("b2c-data.json not found ("+response.status+")");
+
+    const compact=await response.json();
+    if(!Array.isArray(compact)) throw new Error("b2c-data.json must contain an array");
+
+    B2C_LIVE_ROWS=compact.map(r=>({
+      "Channel Name":r?.c ?? r?.channel ?? r?.channel_name ?? r?.["Channel Name"] ?? "",
+      "finance_category":r?.fc ?? r?.finance_category ?? r?.c ?? "",
+      "Order create date":r?.cr ?? r?.order_create_date ?? r?.["Order create date"] ?? "",
+      "Ship By Date":r?.sb ?? r?.ship_by ?? r?.["Ship By Date"] ?? "",
+      "Actual_ShipDate":r?.as ?? r?.actual_ship_date ?? r?.["Actual_ShipDate"] ?? null,
+      "Allocation Date":r?.al ?? r?.at ?? r?.allocation_date ?? r?.AllocationDate ?? r?.AllocationTime ?? "",
+      "Order No":r?.o ?? r?.order_no ?? r?.["Order No"] ?? "",
+      "Status":r?.st ?? r?.status ?? r?.Status ?? "",
+      "Order Qty":r?.q ?? r?.qty ?? r?.order_qty ?? r?.["Order Qty"] ?? 0
+    })).filter(r=>r["Order No"] || r["Order create date"] || r["Channel Name"] || r.finance_category);
+
+    // Metadata tells the dashboard exactly which Excel file produced this
+    // live JSON, so the user can verify that the latest file was selected.
+    let meta=null;
+    try{
+      const metaRes=await fetch("b2c-data-meta.json?v="+cacheBust,{
+        cache:"no-store",
+        headers:{"Cache-Control":"no-cache","Pragma":"no-cache"}
+      });
+      if(metaRes.ok) meta=await metaRes.json();
+    }catch(_){}
+
+    B2C_DATA_LOADED=true;
+    populateB2cFilters();
+    renderB2c();
+
+    const dates=B2C_LIVE_ROWS.map(r=>b2cDateKey(r["Order create date"])).filter(Boolean).sort();
+    const from=dates[0]||"";
+    const to=dates[dates.length-1]||"";
+    const sourceName=meta?.sourceFile || "latest published B2C Excel";
+    const updatedAt=meta?.updatedAt ? new Date(meta.updatedAt) : null;
+    const updatedText=updatedAt && !isNaN(updatedAt.getTime())
+      ? " • published "+updatedAt.toLocaleString()
+      : "";
+
+    if(coverage){
+      coverage.textContent =
+        `B2C latest file: ${sourceName} • ${B2C_LIVE_ROWS.length.toLocaleString()} rows`+
+        `${from&&to?" • "+formatDateKey(from)+" → "+formatDateKey(to):""}${updatedText}`;
+    }
+
+    return true;
+  }catch(err){
+    B2C_LIVE_ROWS=[];
+    B2C_DATA_LOADED=false;
+    populateB2cFilters();
+    renderB2c();
+    if(coverage) coverage.textContent="B2C latest data unavailable — "+err.message;
+    console.warn("Live B2C data unavailable:",err);
+    return false;
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="↻ Refresh B2C Data";}
+  }
+}
+
+async function refreshB2cLive(){
+  // Clear the old in-memory snapshot and fetch the latest published file
+  // again. Resetting filters makes the refreshed data immediately visible.
+  B2C_LIVE_ROWS=[];
+  B2C_DATA_LOADED=false;
+  ["b2cChannel","b2cStatus","b2cOrderStatus","b2cFrom","b2cTo"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.value="";
+  });
+  await loadB2cLiveData();
+}
+
+function b2cFilteredRaw(){
+  const f=document.getElementById("b2cFrom")?.value || "";
+  const t=document.getElementById("b2cTo")?.value || "";
+  return b2cSourceRows().filter(r=>{
+    const ch=b2cChannel(r);
+    if(!ch)return false;
+    const d=b2cDateKey(b2cOrderCreate(r));
+    if(f && (!d || d<f))return false;
+    if(t && (!d || d>t))return false;
+    return true;
+  });
+}
+function b2cStatusFor(row, mode){
+  const now=new Date();
+  const create=b2cOrderCreate(row);
+  const actual=b2cActualShip(row);
+  const deadline=mode==="shipby" ? b2cShipBy(row) :
+    (create ? new Date(create.getTime()+24*3600000) : null);
+
+  if(!deadline){
+    return {status:mode==="shipby" ? "Missing Ship By" : "Missing Creation Date",create,actual,deadline,hours:null};
+  }
+  if(actual){
+    const elapsedHours=create ? (actual-create)/3600000 : null;
+    const within=deadline ? actual<=deadline : (elapsedHours!=null && elapsedHours<=24);
+    return {
+      status:within ? "Within SLA" : "Breached",
+      create,actual,deadline,hours:elapsedHours
+    };
+  }
+  return {
+    status:now<=deadline ? "Open Before 24H" : "Open > 24H",
+    create,actual,deadline,hours:create ? (now-create)/3600000 : null
+  };
+}
+function b2cAggregateChannel(rows, channel, mode){
+  const data=rows.filter(r=>b2cChannel(r)===channel);
+  const out={
+    total:data.length,within:0,breached:0,openOver:0,openBefore:0,missing:0,
+    avgHours:null
+  };
+  const measuredHours=[];
+  data.forEach(r=>{
+    const x=b2cStatusFor(r,mode);
+    if(x.status==="Within SLA"){out.within++; if(x.hours!=null)measuredHours.push(x.hours);}
+    else if(x.status==="Breached"){out.breached++; if(x.hours!=null)measuredHours.push(x.hours);}
+    else if(x.status==="Open > 24H")out.openOver++;
+    else if(x.status==="Open Before 24H")out.openBefore++;
+    else out.missing++;
+  });
+  if(measuredHours.length) out.avgHours=measuredHours.reduce((a,b)=>a+b,0)/measuredHours.length;
+  return out;
+}
+function b2cPct(n,d){return d ? (n/d*100).toFixed(1)+"%" : "0.0%";}
+function b2cHours(n){return n==null ? "—" : n.toFixed(1)+" h";}
+
+function b2cOrderStatus(row){
+  return String(row["Status"] ?? "").trim();
+}
+
+function b2cUnifiedStatus(row){
+  const ch=b2cChannel(row);
+  if(!ch)return null;
+  // B2C TAT is 24 hours for every B2C channel:
+  // Order Creation Date → Actual Ship Date.
+  return b2cStatusFor(row,"24h");
+}
+function b2cFilteredRows(){
+  const f=document.getElementById("b2cFrom")?.value || "";
+  const t=document.getElementById("b2cTo")?.value || "";
+  const chf=document.getElementById("b2cChannel")?.value || "";
+  const sf=document.getElementById("b2cStatus")?.value || "";
+  const osf=document.getElementById("b2cOrderStatus")?.value || "";
+  return b2cSourceRows().filter(r=>{
+    const ch=b2cChannel(r);
+    if(!ch)return false;
+    if(chf && ch!==chf)return false;
+    const d=b2cDateKey(b2cOrderCreate(r));
+    if(f && (!d || d<f))return false;
+    if(t && (!d || d>t))return false;
+
+    // Header-level Order Search / Month filter also apply to B2C.
+    if(globalOrderSearch){
+      const q=String(globalOrderSearch).trim().toLowerCase();
+      const orderNo=String(get(r,["Order No"])||"").toLowerCase();
+      const external=String(get(r,["Extern Order No","External Order No","External OrderNo"])||"").toLowerCase();
+      if(!orderNo.includes(q) && !external.includes(q))return false;
+    }
+    if(globalMonthFilter && (!d || d.slice(0,7)!==globalMonthFilter))return false;
+    const st=b2cUnifiedStatus(r)?.status || "";
+    if(sf && st!==sf)return false;
+    const orderStatus=b2cOrderStatus(r);
+    if(osf && orderStatus!==osf)return false;
+    return true;
+  });
+}
+function b2cBarRows(counts){
+  const vals=Object.entries(counts).filter(([,v])=>v>0);
+  const max=Math.max(1,...vals.map(([,v])=>v));
+  return vals.sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
+    const pct=(v/max*100).toFixed(1);
+    return `<div class="row"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${pct}%"></div></div><b>${v.toLocaleString()}</b></div>`;
+  }).join("") || `<div class="empty">No data</div>`;
+}
+function b2cLineChart(rows, valueFn, pct=false){
+  const by=new Map();
+  rows.forEach(r=>{
+    const k=b2cDateKey(b2cOrderCreate(r));
+    if(!k)return;
+    const v=valueFn(r);
+    if(v==null)return;
+    if(!by.has(k))by.set(k,{n:0,d:0});
+    by.get(k).n+=v.n||0; by.get(k).d+=v.d||0;
+  });
+  const keys=[...by.keys()].sort();
+  if(!keys.length)return '<div class="empty">No dated B2C data</div>';
+  const max=Math.max(1,...keys.map(k=>by.get(k).n/by.get(k).d));
+  return `<div class="mini-chart">${keys.map(k=>{const x=by.get(k);const val=x.d?x.n/x.d:0;const h=Math.max(4,(val/max)*100);return `<div class="mini-col"><div class="mini-value">${pct?(val*100).toFixed(1)+'%':Math.round(val).toLocaleString()}</div><div class="mini-bar" style="height:${h}%"></div><div class="mini-label">${esc(k.slice(5))}</div></div>`}).join('')}</div>`;
+}
+
+function renderB2CAllocationPackSummary(rows){
+  const host=document.getElementById("b2cAllocationPackSummary");
+  if(!host)return;
+
+  const groups=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    const channel=b2cChannel(r)||String(r.finance_category??"").trim()||"Unknown";
+    const order=String(r["Order No"]??"").trim();
+    const qty=Number(String(r["Order Qty"]??0).replace(/,/g,""))||0;
+
+    if(!groups.has(channel))groups.set(channel,{channel,orders:new Set(),qty:0});
+    const g=groups.get(channel);
+    if(order)g.orders.add(order);
+    g.qty+=qty;
+  });
+
+  const data=[...groups.values()].sort((a,b)=>a.channel.localeCompare(b.channel));
+
+  if(!data.length){
+    host.innerHTML='<div class="note">No Allocation → Pack data available for the current B2C filter.</div>';
+    return;
+  }
+
+  const allOrders=new Set();
+  let totalQty=0;
+  data.forEach(g=>{g.orders.forEach(o=>allOrders.add(o));totalQty+=g.qty;});
+
+  host.innerHTML=`
+    <table>
+      <thead>
+        <tr>
+          <th>Channel Name</th>
+          <th>Unique Order Count</th>
+          <th>Order Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map(g=>`
+          <tr>
+            <td><b>${esc(g.channel)}</b></td>
+            <td>${g.orders.size.toLocaleString("en-IN")}</td>
+            <td>${g.qty.toLocaleString("en-IN")}</td>
+          </tr>`).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th>${allOrders.size.toLocaleString("en-IN")}</th>
+          <th>${totalQty.toLocaleString("en-IN")}</th>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+function b2cAggregateFromDateChannel(rows, channel, dateFn){
+  const data=rows.filter(r=>b2cChannel(r)===channel);
+  const out={total:data.length,within:0,breached:0,openOver:0,openBefore:0,missing:0,avgHours:null};
+  const measured=[];
+  const now=new Date();
+  data.forEach(r=>{
+    const start=dateFn(r);
+    const actual=b2cActualShip(r);
+    if(!start){out.missing++;return;}
+    if(actual){
+      const hours=(actual-start)/3600000;
+      if(hours<=24) out.within++; else out.breached++;
+      measured.push(hours);
+    }else{
+      const hours=(now-start)/3600000;
+      if(hours>24) out.openOver++; else out.openBefore++;
+    }
+  });
+  if(measured.length) out.avgHours=measured.reduce((a,b)=>a+b,0)/measured.length;
+  return out;
+}
+function renderB2cAllocationShipSummary(rows){
+  const body=document.getElementById("b2cAllocationShipTbody");
+  if(!body)return;
+  const hasAllocation=rows.some(r=>b2cAllocationDate(r));
+  if(!hasAllocation){
+    body.innerHTML='<tr><td colspan="8" class="note">Allocation Date is not available in the published B2C data source yet. Once the source includes Allocation Date, this summary will populate automatically.</td></tr>';
+    return;
+  }
+  const discovered=[...new Set(rows.map(b2cChannel).filter(Boolean))];
+  const channels=[...B2C_24H_CHANNELS,...discovered.filter(ch=>!B2C_24H_CHANNELS.includes(ch))];
+  body.innerHTML=channels.map(ch=>{
+    const x=b2cAggregateFromDateChannel(rows,ch,b2cAllocationDate);
+    return `<tr><td><b>${esc(ch)}</b></td><td>${x.total.toLocaleString()}</td><td class="good">${x.within.toLocaleString()} <small>(${b2cPct(x.within,x.total)})</small></td><td class="bad">${x.breached.toLocaleString()} <small>(${b2cPct(x.breached,x.total)})</small></td><td>${x.openOver.toLocaleString()}</td><td>${x.openBefore.toLocaleString()}</td><td class="${x.missing?'bad':''}">${x.missing.toLocaleString()}</td><td>${b2cHours(x.avgHours)}</td></tr>`;
+  }).join('');
+}
+
+function renderB2c(){
+  const rows=b2cFilteredRows();
+  const summaryRows=rows;
+  renderB2CAllocationPackSummary(summaryRows);
+  renderB2cAllocationShipSummary(summaryRows);
+  const channels=[...B2C_SHIP_BY_CHANNELS,...B2C_24H_CHANNELS];
+  const statusCounts={"Within SLA":0,"Breached":0,"Open > 24H":0,"Open Before 24H":0,"Missing Creation Date":0};
+  let within=0, measured=0, breached=0, openOver=0, openBefore=0, missing=0;
+  rows.forEach(r=>{
+    const x=b2cUnifiedStatus(r); if(!x)return;
+    statusCounts[x.status]=(statusCounts[x.status]||0)+1;
+    if(x.status==="Within SLA"){within++;measured++;}
+    else if(x.status==="Breached"){breached++;measured++;}
+    else if(x.status==="Open > 24H")openOver++;
+    else if(x.status==="Open Before 24H")openBefore++;
+    else missing++;
+  });
+  const kpiHtml=[
+    ["Total B2C Orders",rows.length,""],
+    ["Within SLA",within,within?"good":""],
+    ["Breached",breached,breached?"bad":""],
+    ["Open > 24H",openOver,openOver?"bad":""],
+    ["SLA %",measured?((within/measured)*100).toFixed(1)+"%":"—",within>=measured*0.9?"good":"bad"]
+  ].map(([label,val,cls])=>`<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${typeof val==='number'?val.toLocaleString():val}</div></div>`).join('');
+  document.getElementById("b2cKpis").innerHTML=kpiHtml;
+  const dates=rows.map(r=>b2cDateKey(b2cOrderCreate(r))).filter(Boolean).sort();
+  document.getElementById("b2cCoverage").textContent=dates.length?`B2C data coverage: ${formatDateKey(dates[0])} → ${formatDateKey(dates[dates.length-1])} • ${rows.length.toLocaleString()} orders in current filter`:`B2C data coverage: no valid Order Creation Date`;
+
+  const chCounts={}; channels.forEach(ch=>chCounts[ch]=0); rows.forEach(r=>{const ch=b2cChannel(r);if(ch)chCounts[ch]=(chCounts[ch]||0)+1;});
+  document.getElementById("b2cStatusChart").innerHTML=b2cBarRows(statusCounts);
+  document.getElementById("b2cChannelChart").innerHTML=b2cBarRows(chCounts);
+  document.getElementById("b2cDayChart").innerHTML=b2cLineChart(rows,r=>({n:1,d:1}),false);
+  document.getElementById("b2cSlaDayChart").innerHTML=b2cLineChart(rows,r=>{const x=b2cUnifiedStatus(r);if(!x||!x.create)return null;return x.status==="Within SLA"?{n:1,d:1}:{n:0,d:1};},true);
+
+  const h24Body=document.getElementById("b2c24Tbody");
+  if(h24Body) h24Body.innerHTML=B2C_24H_CHANNELS.map(ch=>{
+    const x=b2cAggregateChannel(rows,ch,"24h");
+    return `<tr><td><b>${esc(ch)}</b></td><td>${x.total.toLocaleString()}</td><td class="good">${x.within.toLocaleString()} <small>(${b2cPct(x.within,x.total)})</small></td><td class="bad">${x.breached.toLocaleString()} <small>(${b2cPct(x.breached,x.total)})</small></td><td>${x.openOver.toLocaleString()}</td><td>${x.openBefore.toLocaleString()}</td><td class="${x.missing?'bad':''}">${x.missing.toLocaleString()}</td><td>${b2cHours(x.avgHours)}</td></tr>`;
+  }).join("");
+
+  const note=document.getElementById("b2cNote");
+  if(note)note.textContent=`LIVE B2C data • ${B2C_LIVE_ROWS.length.toLocaleString()} source rows • no order-detail table is shown on this dashboard.`;
+}
+function populateB2cFilters(){
+  const sel=document.getElementById("b2cChannel");
+  if(!sel)return;
+  const current=sel.value;
+  const channels=[...B2C_SHIP_BY_CHANNELS,...B2C_24H_CHANNELS];
+  sel.innerHTML='<option value="">All B2C Channels</option>'+channels.map(ch=>`<option value="${esc(ch)}">${esc(ch)}</option>`).join('');
+  sel.value=current;
+  const st=document.getElementById("b2cStatus");
+  if(st){const cur=st.value;st.innerHTML='<option value="">All SLA Status</option>'+Object.keys({"Within SLA":1,"Breached":1,"Open > 24H":1,"Open Before 24H":1,"Missing Creation Date":1}).map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');st.value=cur;}
+
+  const os=document.getElementById("b2cOrderStatus");
+  if(os){
+    const cur=os.value;
+    const statuses=[...new Set(b2cSourceRows().map(b2cOrderStatus).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    os.innerHTML='<option value="">All Order Status</option>'+statuses.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    os.value=cur;
+  }
+}
+function clearB2cFilters(){
+  ["b2cChannel","b2cStatus","b2cOrderStatus","b2cFrom","b2cTo"].forEach(id=>{const e=document.getElementById(id);if(e)e.value="";});
+  renderB2c();
+}
+["b2cChannel","b2cStatus","b2cOrderStatus","b2cFrom","b2cTo"].forEach(id=>{const e=document.getElementById(id);if(e)e.addEventListener("change",renderB2c);});
+
+/* Render B2C whenever the tab is opened. */
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    if(btn.dataset.tab==="b2cTab"){populateB2cFilters();renderB2c();}
+  });
+});
+
+/* ===== Dashboard boot safety =====
+   Keep the static dashboard visible even when a live data endpoint is unavailable.
+*/
+try {
+  if (typeof populateB2cFilters === "function") populateB2cFilters();
+  if (typeof renderB2c === "function") renderB2c();
+  if (typeof loadB2cLiveData === "function") loadB2cLiveData();
+} catch (bootErr) {
+  console.warn("B2C initial render skipped:", bootErr);
+}
+
+</script>
+
+<!-- Supabase Auth + Realtime Presence -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  const SUPABASE_URL = "https://nfacejugcsbmljqqswpy.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_nH2Bmsb9gm29Txb9-5pynw_-vzcFSHX";
+  const COMPANY_EMAIL_DOMAIN = "pw.live";
+
+  const client = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+  );
+
+  const overlay = document.getElementById('companyAuthOverlay');
+  const form = document.getElementById('companyLoginForm');
+  const emailInput = document.getElementById('companyEmail');
+  const passwordInput = document.getElementById('companyPassword');
+  const loginBtn = document.getElementById('companyEmailLogin');
+  const authMsg = document.getElementById('authMessage');
+  const authUser = document.getElementById('authUser');
+
+  function showError(msg){
+    if(authMsg) authMsg.textContent = msg;
+  }
+
+  function setUnlocked(user){
+    document.body.classList.remove('auth-locked');
+    if(overlay) overlay.style.display = 'none';
+
+    if(authUser){
+      authUser.style.display = 'flex';
+      const email = esc(user?.email || '');
+      authUser.innerHTML =
+        `<span>👤 ${email}</span><button id="logoutBtn" type="button">Logout</button>`;
+
+      document.getElementById('logoutBtn')?.addEventListener('click', async ()=>{
+        await client.auth.signOut();
+        location.reload();
+      });
+    }
+  }
+
+  function setLocked(){
+    document.body.classList.add('auth-locked');
+    if(overlay) overlay.style.display = 'flex';
+  }
+
+  function allowed(user){
+    const email = String(user?.email || '').toLowerCase().trim();
+    return email.endsWith('@' + COMPANY_EMAIL_DOMAIN);
+  }
+
+  async function signInWithCompanyEmail(email, password){
+    const cleanEmail = String(email || '').trim().toLowerCase();
+
+    if(!cleanEmail.endsWith('@' + COMPANY_EMAIL_DOMAIN)){
+      showError('Only @pw.live company accounts are allowed.');
+      return;
+    }
+
+    if(!password){
+      showError('Please enter your password.');
+      return;
+    }
+
+    loginBtn.disabled = true;
+    showError('Signing in…');
+
+    try{
+      const { data, error } = await client.auth.signInWithPassword({
+        email: cleanEmail,
+        password: password
+      });
+
+      if(error){
+        showError(error.message || 'Login failed. Please check your email and password.');
+        return;
+      }
+
+      if(!data?.user || !allowed(data.user)){
+        await client.auth.signOut();
+        setLocked();
+        showError('Only @pw.live company accounts are allowed.');
+        return;
+      }
+
+      setUnlocked(data.user);
+      startPresence(data.user);
+    }catch(err){
+      console.error('Company email login error:', err);
+      showError('Login failed. Please try again.');
+    }finally{
+      loginBtn.disabled = false;
+    }
+  }
+
+  form?.addEventListener('submit', async (event)=>{
+    event.preventDefault();
+    await signInWithCompanyEmail(emailInput?.value, passwordInput?.value);
+  });
+
+  client.auth.onAuthStateChange(async (event, session)=>{
+    if(session?.user){
+      if(!allowed(session.user)){
+        await client.auth.signOut();
+        setLocked();
+        showError('Only @pw.live company accounts are allowed.');
+        return;
+      }
+
+      setUnlocked(session.user);
+      startPresence(session.user);
+    }else{
+      setLocked();
+    }
+  });
+
+  client.auth.getSession().then(({data})=>{
+    if(data.session?.user && allowed(data.session.user)){
+      setUnlocked(data.session.user);
+      startPresence(data.session.user);
+    }else if(data.session?.user){
+      client.auth.signOut();
+      setLocked();
+      showError('Only @pw.live company accounts are allowed.');
+    }else{
+      setLocked();
+    }
+  });
+
+  function startPresence(user){
+    const countEl = document.getElementById('liveUsersCount');
+    if(!countEl) return;
+
+    const sessionId =
+      'session-' + (user.id || 'user') + '-' + Date.now() + '-' +
+      Math.random().toString(36).slice(2);
+
+    const channel = client.channel(
+      'pw-master-dashboard-live-users',
+      {config:{presence:{key:sessionId}}}
+    );
+
+    const render = ()=>{
+      countEl.textContent =
+        String(Object.keys(channel.presenceState()).length);
+    };
+
+    channel
+      .on('presence',{event:'sync'},render)
+      .on('presence',{event:'join'},render)
+      .on('presence',{event:'leave'},render)
+      .subscribe(async status=>{
+        if(status === 'SUBSCRIBED'){
+          await channel.track({
+            page:'PW Master Dashboard',
+            email:user.email,
+            connected_at:new Date().toISOString()
+          });
+          render();
+        }
+      });
+  }
+})();
+</script>
+
+<script>
+(function(){
+  const input = document.getElementById('searchSummaryInput');
+  const btn = document.getElementById('searchSummaryBtn');
+  const clear = document.getElementById('searchSummaryClear');
+  const value = document.getElementById('searchSummaryValue');
+  const text = document.getElementById('searchSummaryText');
+  const result = document.getElementById('searchSummaryResult');
+  if(!input || !btn || !clear) return;
+
+  function norm(v){ return String(v ?? '').trim().toLowerCase(); }
+  function esc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function getData(){
+    const candidates=[window.reportRows,window.orderData,window.orders,window.vinculumData,window.allRows,window.rows,window.dataRows,window.filteredRows];
+    for(const x of candidates) if(Array.isArray(x)&&x.length) return x;
+    try{
+      for(const k of Object.keys(window)){
+        if(!/rows|orders|data/i.test(k)) continue;
+        const x=window[k];
+        if(Array.isArray(x)&&x.length&&typeof x[0]==='object') return x;
+      }
+    }catch(e){}
+    return [];
+  }
+
+  function field(o,names){
+    if(!o||typeof o!=='object') return '';
+    for(const n of names) if(Object.prototype.hasOwnProperty.call(o,n)&&o[n]!=null) return o[n];
+    for(const k of Object.keys(o)){
+      const nk=norm(k).replace(/[^a-z0-9]/g,'');
+      for(const n of names){
+        const nn=norm(n).replace(/[^a-z0-9]/g,'');
+        if(nk===nn||nk.includes(nn)||nn.includes(nk)) return o[k];
+      }
+    }
+    return '';
+  }
+
+  function doSearch(){
+    const q=norm(input.value);
+    if(!q){
+      value.textContent='—';
+      text.textContent='Enter an Order No. or External Order No. and click Search.';
+      result.innerHTML=''; result.classList.remove('show'); return;
+    }
+
+    const data=getData();
+    const matches=data.filter(row=>{
+      const a=norm(field(row,['Order No','OrderNo','Order Number','Order Number.','order_no','orderNo']));
+      const b=norm(field(row,['External Order No','ExternalOrderNo','External Order Number','external_order_no','externalOrderNo']));
+      return a.includes(q)||b.includes(q);
+    });
+
+    if(!matches.length){
+      // Also pass the query to the existing top search if the dashboard owns the dataset elsewhere.
+      const top=document.querySelector('input[placeholder*="Search Order"]');
+      if(top){ top.value=input.value.trim(); top.dispatchEvent(new Event('input',{bubbles:true})); }
+      value.textContent='Not found';
+      text.textContent=`No order found for "${input.value.trim()}".`;
+      result.innerHTML='<div class="search-empty">Order not found. Check the Order No. / External Order No.</div>';
+      result.classList.add('show'); return;
+    }
+
+    const row=matches[0];
+    const fields=[
+      ['Order No.',field(row,['Order No','OrderNo','Order Number','Order Number.','order_no','orderNo'])],
+      ['External Order No.',field(row,['External Order No','ExternalOrderNo','External Order Number','external_order_no','externalOrderNo'])],
+      ['Status',field(row,['Status','status'])],
+      ['Order Qty',field(row,['Order Qty','OrderQty','Quantity','Qty','order_qty'])],
+      ['Warehouse',field(row,['Warehouse','warehouse'])],
+      ['Create Date',field(row,['Order Create Date','OrderCreateDate','Order Creation Date','Create Date','create_date'])]
+    ].filter(x=>String(x[1]??'').trim()!=='');
+    value.textContent=fields[0]?.[1]||input.value.trim();
+    text.textContent=`${matches.length} matching row${matches.length>1?'s':''} found.`;
+    result.innerHTML=fields.map(x=>`<div class="search-hit-row"><span class="search-hit-label">${esc(x[0])}</span><span class="search-hit-value">${esc(x[1])}</span></div>`).join('');
+    result.classList.add('show');
+  }
+
+  btn.addEventListener('click',doSearch);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();doSearch();} if(e.key==='Escape')clear.click();});
+  clear.addEventListener('click',()=>{input.value='';value.textContent='—';text.textContent='Enter an Order No. or External Order No. and click Search.';result.innerHTML='';result.classList.remove('show');input.focus();});
+})();
+</script>
+
+</body>
+</html>
