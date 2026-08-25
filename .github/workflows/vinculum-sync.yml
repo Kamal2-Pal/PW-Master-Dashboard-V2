@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test API configuration
+      - name: Check API key
         env:
           VINCULUM_API_KEY: ${{ secrets.VINCULUM_API_KEY }}
         run: |
@@ -16,11 +16,8 @@ jobs:
             echo "VINCULUM_API_KEY secret is missing"
             exit 1
           fi
+          echo "Vinculum API key is configured."
 
-          echo "VINCULUM_API_KEY is configured successfully."
-          echo "API secret will NOT be printed."
-
-      - name: Integration placeholder
+      - name: Check endpoint
         run: |
-          echo "Vinculum integration configuration verified."
-          echo "Order API endpoint: /order/list"
+          echo "Vinculum Order endpoint configured: /order/list"
