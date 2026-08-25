@@ -18,6 +18,18 @@ jobs:
           fi
           echo "Vinculum API key is configured."
 
-      - name: Check endpoint
+      - name: Call Vinculum Order API
+        env:
+          VINCULUM_API_KEY: ${{ secrets.VINCULUM_API_KEY }}
         run: |
-          echo "Vinculum Order endpoint configured: /order/list"
+          curl -sS -X POST \
+            "https://physicswallah.vineretail.com/eRetailWeb/order/list" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -H "Authorization: Bearer $VINCULUM_API_KEY" \
+            --data-urlencode "_search=true" \
+            --data-urlencode "rows=20" \
+            --data-urlencode "page=1" \
+            --data-urlencode "sord=asc" \
+            --data-urlencode "siteLoc=M10%17M09%17M16%17M21%17M08%17PWH" \
+            --data-urlencode "fromOrderDate=11/08/2026" \
+            --data-urlencode "toOrderDate=25/08/2026"
