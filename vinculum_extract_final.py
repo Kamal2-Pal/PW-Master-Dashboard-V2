@@ -78,10 +78,11 @@ DATE_DAYS = 7
 # HELPERS
 # ============================================================
 
-def wait_for_download(folder, timeout=120):
-    """Wait for a new completed download."""
+def wait_for_download(folder, timeout=120, existing_files=None):
+    """Wait for a new completed Chrome download."""
     seconds = 0
-    existing_files = set(glob.glob(os.path.join(folder, "*")))
+    if existing_files is None:
+        existing_files = set(glob.glob(os.path.join(folder, "*")))
 
     while seconds < timeout:
         time.sleep(1)
@@ -90,16 +91,21 @@ def wait_for_download(folder, timeout=120):
         current_files = set(glob.glob(os.path.join(folder, "*")))
         new_files = current_files - existing_files
 
+        # Chrome may create the final file very quickly, so also consider
+        # any newly-created file even if no .crdownload is visible anymore.
         finished_files = [
             f for f in new_files
-            if os.path.isfile(f) and not f.endswith(".crdownload")
+            if os.path.isfile(f)
+            and not f.endswith(".crdownload")
+            and not f.endswith(".tmp")
         ]
-        still_downloading = [
-            f for f in new_files
+
+        active_downloads = [
+            f for f in current_files
             if f.endswith(".crdownload")
         ]
 
-        if finished_files and not still_downloading:
+        if finished_files and not active_downloads:
             return max(finished_files, key=os.path.getmtime)
 
     return None
@@ -136,7 +142,21 @@ def build_driver():
     options.add_argument("--window-size=1920,1080")
 
     # Selenium Manager automatically manages ChromeDriver.
-    return webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(options=options)
+
+    # Explicitly allow downloads in headless Chrome on GitHub Actions.
+    try:
+        driver.execute_cdp_cmd(
+            "Page.setDownloadBehavior",
+            {
+                "behavior": "allow",
+                "downloadPath": DOWNLOAD_FOLDER,
+            },
+        )
+    except Exception as exc:
+        print(f"   Chrome download permission setup warning: {exc}")
+
+    return driver
 
 
 def accept_existing_session_alert(driver):
@@ -813,31 +833,138 @@ def extract_vinculum_data():
         # ----------------------------------------------------
         print("12) Download click kar raha hoon...")
 
-        # Find the SUCCESS row again and click its actual download control.
-        row, values = read_latest_order_export()
-        if row is None:
-            raise RuntimeError("SUCCESS report row download ke liye nahi mila.")
-
-        download_controls = row.find_elements(
-            By.CSS_SELECTOR,
-            "label[onclick*='downloadReport']"
+        # IMPORTANT:
+        # Take the download-folder snapshot BEFORE clicking. The previous
+        # version took the snapshot after the click, so a fast download
+        # could finish before wait_for_download() started watching it.
+        files_before_download = set(
+            glob.glob(os.path.join(DOWNLOAD_FOLDER, "*"))
         )
 
+        # Find the SUCCESS OrderEnquiryExport row again.
+        # Prefer the exact report ID that became SUCCESS in the polling loop.
+        row = None
+        values = None
+
+        rows = driver.find_elements(
+            By.CSS_SELECTOR,
+            "table.table-bordered tbody tr"
+        )
+
+        for candidate in rows:
+            cells = candidate.find_elements(By.TAG_NAME, "td")
+            if len(cells) < 7:
+                continue
+
+            candidate_values = [c.text.strip() for c in cells]
+            if (
+                candidate_values[0] == str(current_report_id)
+                and "ORDERENQUIRYEXPORT" in candidate_values[3].upper()
+                and candidate_values[1].strip().upper() == "SUCCESS"
+            ):
+                row = candidate
+                values = candidate_values
+                break
+
+        # Fallback: use the first SUCCESS OrderEnquiryExport row.
+        if row is None:
+            for candidate in rows:
+                cells = candidate.find_elements(By.TAG_NAME, "td")
+                if len(cells) < 7:
+                    continue
+
+                candidate_values = [c.text.strip() for c in cells]
+                if (
+                    "ORDERENQUIRYEXPORT" in candidate_values[3].upper()
+                    and candidate_values[1].strip().upper() == "SUCCESS"
+                ):
+                    row = candidate
+                    values = candidate_values
+                    break
+
+        if row is None:
+            raise RuntimeError(
+                f"SUCCESS OrderEnquiryExport row download ke liye nahi mila. "
+                f"Report ID: {current_report_id}"
+            )
+
+        print(
+            f"   SUCCESS row confirmed - Report ID: {values[0]}, "
+            f"Report: {values[3]}"
+        )
+
+        # Vinculum's download control is an icon/label rather than a normal
+        # text link. Find the actual clickable element inside THIS row.
+        download_controls = row.find_elements(
+            By.XPATH,
+            ".//*[@onclick[contains(translate(., "
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), "
+            "'download')]]"
+        )
+
+        # The onclick attribute itself is more reliable than element text.
         if not download_controls:
             download_controls = row.find_elements(
-                By.CSS_SELECTOR,
-                "label"
+                By.XPATH,
+                ".//*[@onclick and contains(translate(@onclick, "
+                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), "
+                "'download')]"
             )
+
+        # Fallback for the icon shown by Vinculum: inspect label/img/a/button
+        # elements and use title/alt/aria-label/class/onclick as hints.
+        if not download_controls:
+            candidates = row.find_elements(
+                By.CSS_SELECTOR,
+                "label, a, button, input, img, i, span"
+            )
+
+            for el in candidates:
+                try:
+                    meta = " ".join([
+                        el.get_attribute("onclick") or "",
+                        el.get_attribute("title") or "",
+                        el.get_attribute("aria-label") or "",
+                        el.get_attribute("alt") or "",
+                        el.get_attribute("class") or "",
+                    ]).lower()
+
+                    if "download" in meta or "downloadreport" in meta:
+                        download_controls.append(el)
+                except Exception:
+                    pass
 
         if not download_controls:
             raise RuntimeError(
-                "SUCCESS report mein downloadReport wala control nahi mila."
+                "SUCCESS report mein Vinculum download icon/control nahi mila."
             )
 
+        # Scroll into view and click the actual control. If the control is an
+        # icon nested inside a label/anchor, JS click is used as the fallback.
+        download_control = download_controls[0]
+
         driver.execute_script(
-            "arguments[0].click();",
-            download_controls[0]
+            "arguments[0].scrollIntoView({block:'center'});",
+            download_control
         )
+        time.sleep(0.5)
+
+        try:
+            WebDriverWait(driver, 10).until(
+                lambda d: download_control.is_displayed()
+                and download_control.is_enabled()
+            )
+        except Exception:
+            pass
+
+        try:
+            download_control.click()
+        except Exception:
+            driver.execute_script(
+                "arguments[0].click();",
+                download_control
+            )
+
         print(f"   Download initiated for Report ID: {values[0]}")
 
         # ----------------------------------------------------
@@ -847,10 +974,21 @@ def extract_vinculum_data():
 
         downloaded_file = wait_for_download(
             DOWNLOAD_FOLDER,
-            timeout=120
+            timeout=120,
+            existing_files=files_before_download,
         )
 
         if not downloaded_file:
+            # Helpful diagnostic: show what Chrome actually left behind.
+            current_files = sorted(
+                glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")),
+                key=os.path.getmtime,
+                reverse=True,
+            )
+            print(
+                "   Download folder files:",
+                [os.path.basename(f) for f in current_files[:10]]
+            )
             raise RuntimeError(
                 "Excel download timeout ho gaya."
             )
