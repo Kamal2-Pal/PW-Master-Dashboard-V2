@@ -745,7 +745,7 @@ def extract_vinculum_data():
             """Read newest OrderEnquiryExport row."""
             rows = driver.find_elements(
                 By.CSS_SELECTOR,
-                "table.table-bordered tbody tr"
+                "tr.jqgrow"
             )
 
             for row in rows:
@@ -757,6 +757,7 @@ def extract_vinculum_data():
                 if "ORDERENQUIRYEXPORT" in values[3].upper():
                     return row, values
 
+            print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
             return None, None
 
         while not status_ready:
@@ -848,7 +849,7 @@ def extract_vinculum_data():
 
         rows = driver.find_elements(
             By.CSS_SELECTOR,
-            "table.table-bordered tbody tr"
+            "tr.jqgrow"
         )
 
         for candidate in rows:
