@@ -800,12 +800,12 @@ def extract_vinculum_data():
                     f"   Status read issue: {type(exc).__name__}: {exc}"
                 )
 
-            # Refresh Pending Report every 10 seconds.
+            # Refresh Pending Report every 10 seconds - WITHIN the iframe itself,
+            # never fall back to a full page reload (that wipes out all open tabs).
             try:
-                driver.switch_to.default_content()
+                switch_to_pending_iframe()
                 driver.execute_script(
-                    "if (typeof refreshGrid === 'function') "
-                    "{ refreshGrid(); } else { location.reload(); }"
+                    "if (typeof refreshGrid === 'function') { refreshGrid(); }"
                 )
                 print("   Pending Report refresh kiya (10 sec interval).")
             except Exception as exc:
