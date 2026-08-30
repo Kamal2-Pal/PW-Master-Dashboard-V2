@@ -973,7 +973,7 @@ def extract_vinculum_data():
                 download_control
             )
 
-        print(f"   Download initiated for Report ID: {values[0]}")
+        print(f"   Download initiated for Report ID: {matched_report_id}")
 
         # ----------------------------------------------------
         # 9. WAIT FOR DOWNLOAD
