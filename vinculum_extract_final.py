@@ -71,7 +71,7 @@ CHANNELS = [
     "PWH - Sikanderabad_FC1",
 ]
 
-DATE_DAYS = 7
+DATE_DAYS = 90
 
 
 # ============================================================
