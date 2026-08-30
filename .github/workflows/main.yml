@@ -1,40 +1,31 @@
 name: Vinculum Auto Extract
-
 on:
   schedule:
-    - cron: "30 6 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   extract-vinculum-data:
     runs-on: ubuntu-latest
-
     env:
       VINCULUM_USERNAME: ${{ secrets.VINCULUM_USERNAME }}
       VINCULUM_PASSWORD: ${{ secrets.VINCULUM_PASSWORD }}
       VINCULUM_DATE_MODE: LAST_7_DAYS
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install Selenium
         run: |
           python -m pip install --upgrade pip
           pip install selenium
-
       - name: Run Vinculum Extract
         run: |
           python "vinculum_extract_final.py"
-
       - name: Commit updated data.xlsx
         run: |
           git config user.name "github-actions[bot]"
