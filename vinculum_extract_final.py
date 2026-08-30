@@ -674,37 +674,41 @@ def extract_vinculum_data():
         # ----------------------------------------------------
         print("10) Pending Report iframe dhoondh raha hoon...")
 
-        driver.switch_to.default_content()
-        time.sleep(2)
+        def find_and_switch_to_pending_iframe():
+            """Har visible iframe ke ANDAR jhaank kar dekhta hai ki 'Pending Report'
+            text hai ya nahi - guess (src/position) pe depend nahi karta."""
+            driver.switch_to.default_content()
+            time.sleep(0.5)
 
-        all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        target_iframe = None
+            all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+            for fr in all_iframes:
+                if not fr.is_displayed():
+                    continue
+                try:
+                    driver.switch_to.frame(fr)
+                    body_text = driver.find_element(By.TAG_NAME, "body").text
+                    if "Pending Report" in body_text or "Report ID" in body_text:
+                        return True
+                    driver.switch_to.default_content()
+                except Exception:
+                    try:
+                        driver.switch_to.default_content()
+                    except Exception:
+                        pass
+            return False
 
-        for fr in all_iframes:
-            src = (fr.get_attribute("src") or "").lower()
+        found = find_and_switch_to_pending_iframe()
+        if not found:
+            # Thoda aur wait karke ek aur try
+            time.sleep(3)
+            found = find_and_switch_to_pending_iframe()
 
-            if fr.is_displayed() and (
-                "pending" in src or "export" in src
-            ):
-                target_iframe = fr
-                break
-
-        if target_iframe is None:
-            displayed = [
-                fr for fr in all_iframes
-                if fr.is_displayed()
-            ]
-
-            if displayed:
-                target_iframe = displayed[-1]
-
-        if target_iframe is None:
+        if not found:
             raise RuntimeError(
-                "Pending Report iframe nahi mila."
+                "Pending Report iframe nahi mila (content-check ke baad bhi)."
             )
 
-        driver.switch_to.frame(target_iframe)
-        time.sleep(3)
+        time.sleep(2)
 
         # ----------------------------------------------------
         # 7. WAIT FOR SUCCESS / RETRY ON ERROR
@@ -719,27 +723,9 @@ def extract_vinculum_data():
         MAX_EXPORT_RETRIES = 10
 
         def switch_to_pending_iframe():
-            driver.switch_to.default_content()
-            time.sleep(0.5)
-
-            all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-            target = None
-
-            for fr in all_iframes:
-                src = (fr.get_attribute("src") or "").lower()
-                if fr.is_displayed() and ("pending" in src or "export" in src):
-                    target = fr
-                    break
-
-            if target is None:
-                displayed = [fr for fr in all_iframes if fr.is_displayed()]
-                if displayed:
-                    target = displayed[-1]
-
-            if target is None:
+            ok = find_and_switch_to_pending_iframe()
+            if not ok:
                 raise RuntimeError("Pending Report iframe nahi mila.")
-
-            driver.switch_to.frame(target)
 
         def read_latest_order_export():
             """Read newest OrderEnquiryExport row."""
