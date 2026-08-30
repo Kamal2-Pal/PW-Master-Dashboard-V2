@@ -727,6 +727,34 @@ def extract_vinculum_data():
             if not ok:
                 raise RuntimeError("Pending Report iframe nahi mila.")
 
+        STATUS_WORDS = {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}
+
+        def parse_export_row(row):
+            """Row ke cells scan karke report_id/status/error_msg nikalta hai -
+            column POSITION pe guess nahi karta (jo hidden columns ki wajah se
+            galat nikal sakta hai), sirf cell VALUES dekhta hai."""
+            cells = row.find_elements(By.TAG_NAME, "td")
+            texts = [c.text.strip() for c in cells]
+
+            status_text = next(
+                (t.upper() for t in texts if t.upper() in STATUS_WORDS), None
+            )
+            report_id = next(
+                (t for t in texts if t.isdigit() and len(t) >= 4), None
+            )
+            error_msg = ""
+            for t in texts:
+                if not t or t.upper() in STATUS_WORDS or t.isdigit():
+                    continue
+                if "ORDERENQUIRYEXPORT" in t.upper().replace(" ", ""):
+                    continue
+                if "/" in t or ":" in t:  # date/time cell, skip
+                    continue
+                if len(t) > 8:
+                    error_msg = t
+                    break
+            return texts, report_id, status_text, error_msg
+
         def read_latest_order_export():
             """Read newest OrderEnquiryExport row."""
             rows = driver.find_elements(
@@ -736,12 +764,15 @@ def extract_vinculum_data():
 
             for row in rows:
                 cells = row.find_elements(By.TAG_NAME, "td")
-                if len(cells) < 7:
-                    continue
-
-                values = [c.text.strip() for c in cells]
-                if "ORDERENQUIRYEXPORT" in values[3].upper():
-                    return row, values
+                joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
+                if "ORDERENQUIRYEXPORT" in joined:
+                    texts, report_id, status_text, error_msg = parse_export_row(row)
+                    return row, {
+                        "texts": texts,
+                        "report_id": report_id,
+                        "status": status_text,
+                        "error_msg": error_msg,
+                    }
 
             print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
             return None, None
@@ -751,14 +782,14 @@ def extract_vinculum_data():
 
             try:
                 switch_to_pending_iframe()
-                row, values = read_latest_order_export()
+                row, info = read_latest_order_export()
 
                 if row is None:
                     print(f"   Attempt {attempt} - OrderEnquiryExport row abhi nahi mila.")
                 else:
-                    report_id = values[0]
-                    status_text = values[1].strip().upper()
-                    error_msg = values[6].strip()
+                    report_id = info["report_id"]
+                    status_text = info["status"] or ""
+                    error_msg = info["error_msg"]
 
                     print(
                         f"   Attempt {attempt} - Report {report_id} - "
@@ -831,42 +862,35 @@ def extract_vinculum_data():
         # Find the SUCCESS OrderEnquiryExport row again.
         # Prefer the exact report ID that became SUCCESS in the polling loop.
         row = None
-        values = None
+        matched_report_id = None
 
         rows = driver.find_elements(
             By.CSS_SELECTOR,
             "tr.jqgrow"
         )
 
+        export_rows = []
         for candidate in rows:
             cells = candidate.find_elements(By.TAG_NAME, "td")
-            if len(cells) < 7:
+            joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
+            if "ORDERENQUIRYEXPORT" not in joined:
                 continue
+            _, r_id, r_status, _ = parse_export_row(candidate)
+            export_rows.append((candidate, r_id, r_status))
 
-            candidate_values = [c.text.strip() for c in cells]
-            if (
-                candidate_values[0] == str(current_report_id)
-                and "ORDERENQUIRYEXPORT" in candidate_values[3].upper()
-                and candidate_values[1].strip().upper() == "SUCCESS"
-            ):
+        # 1) Exact report ID match with SUCCESS status
+        for candidate, r_id, r_status in export_rows:
+            if r_id == str(current_report_id) and r_status == "SUCCESS":
                 row = candidate
-                values = candidate_values
+                matched_report_id = r_id
                 break
 
-        # Fallback: use the first SUCCESS OrderEnquiryExport row.
+        # 2) Fallback: first SUCCESS OrderEnquiryExport row
         if row is None:
-            for candidate in rows:
-                cells = candidate.find_elements(By.TAG_NAME, "td")
-                if len(cells) < 7:
-                    continue
-
-                candidate_values = [c.text.strip() for c in cells]
-                if (
-                    "ORDERENQUIRYEXPORT" in candidate_values[3].upper()
-                    and candidate_values[1].strip().upper() == "SUCCESS"
-                ):
+            for candidate, r_id, r_status in export_rows:
+                if r_status == "SUCCESS":
                     row = candidate
-                    values = candidate_values
+                    matched_report_id = r_id
                     break
 
         if row is None:
@@ -875,10 +899,7 @@ def extract_vinculum_data():
                 f"Report ID: {current_report_id}"
             )
 
-        print(
-            f"   SUCCESS row confirmed - Report ID: {values[0]}, "
-            f"Report: {values[3]}"
-        )
+        print(f"   SUCCESS row confirmed - Report ID: {matched_report_id}")
 
         # Vinculum's download control is an icon/label rather than a normal
         # text link. Find the actual clickable element inside THIS row.
