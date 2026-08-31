@@ -170,7 +170,7 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
-// Google Sheet Published CSV Link
+// Updated Google Sheet Published CSV Link
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?output=csv";
 
 let savedDbRemarks = {};
@@ -304,7 +304,8 @@ function mergeAndDeduplicate(historyRows, currentRows) {
 // Fetch Google Sheets Data
 async function fetchGoogleSheetData() {
   try {
-    const response = await fetch(GOOGLE_SHEET_CSV_URL + "&t=" + Date.now());
+    const url = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
+    const response = await fetch(url);
     if(!response.ok) return;
     const csvText = await response.text();
     
@@ -317,9 +318,19 @@ async function fetchGoogleSheetData() {
           const keys = Object.keys(row);
           if (keys.length === 0) return;
 
-          const orderId = norm(row[keys[0]] || "");
-          const openRemark = norm(row[keys[1]] || "");
-          const breachRemark = norm(row[keys[2]] || "");
+          let orderId = "", openRemark = "", breachRemark = "";
+          
+          keys.forEach(k => {
+            const cleanKey = k.trim().toLowerCase();
+            if (cleanKey.includes("order")) orderId = norm(row[k]);
+            if (cleanKey.includes("open")) openRemark = norm(row[k]);
+            if (cleanKey.includes("breach") || cleanKey.includes("tat")) breachRemark = norm(row[k]);
+          });
+
+          // Fallback to Column positions (Col A, Col B, Col C)
+          if (!orderId && keys[0]) orderId = norm(row[keys[0]]);
+          if (!openRemark && keys[1]) openRemark = norm(row[keys[1]]);
+          if (!breachRemark && keys[2]) breachRemark = norm(row[keys[2]]);
 
           if (orderId) {
             googleSheetRemarksMap[orderId] = {
@@ -328,7 +339,8 @@ async function fetchGoogleSheetData() {
             };
           }
         });
-        if ($("slaTab").classList.contains("active-panel")) {
+
+        if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
           applySlaFilters();
         }
       }
