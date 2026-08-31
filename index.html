@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PW - Order Dashboard V2</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#182230}
@@ -45,15 +46,45 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.header{align-items:flex-start;flex-direction:column}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
+
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f5f7;padding:20px}
+.login-card{width:100%;max-width:462px;background:#fff;border-radius:12px;padding:36px 37px 30px;box-shadow:0 8px 30px rgba(0,0,0,.12);text-align:center}
+.login-logo{width:57px;height:57px;border-radius:15px;background:#f57c00;color:#fff;display:grid;place-items:center;font-size:38px;font-weight:900;margin:0 auto 16px}
+.login-title{font-size:26px;margin:0 0 8px;color:#101820}
+.login-sub{font-size:14px;line-height:1.5;color:#687686;margin-bottom:26px}
+.login-form{text-align:left}.login-field{margin-bottom:14px}.login-field input{width:100%;height:47px;padding:0 14px;font-size:15px;border:1px solid #ccd5df;border-radius:8px;outline:none}.login-field input:focus{border-color:#111;box-shadow:0 0 0 2px rgba(17,17,17,.08)}
+.login-btn{width:100%;height:45px;border:0;border-radius:8px;background:#111;color:#fff;font-size:14px;font-weight:800;cursor:pointer;margin-top:2px}.login-btn:disabled{opacity:.65;cursor:not-allowed}
+.login-error{display:none;background:#fff1f1;color:#b42318;border:1px solid #ffd1d1;border-radius:7px;padding:10px 12px;font-size:12px;line-height:1.4;margin:0 0 14px;text-align:left}
+.login-loading{display:none;color:#687686;font-size:12px;margin-top:12px}
+.user-chip{display:flex;align-items:center;gap:8px}.user-email{font-size:11px;color:#aeb9c6}.logout-btn{padding:8px 11px;font-size:12px}
+@media(max-width:650px){.login-card{padding:30px 22px}.login-title{font-size:23px}}
+
 </style>
 </head>
 <body>
+<section id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="login-logo">V</div>
+    <h1 class="login-title">PW - Master Dashboard</h1>
+    <div class="login-sub">Company login required.<br>Only authorised <b>@pw.live</b> accounts can access this dashboard.</div>
+    <div id="loginError" class="login-error"></div>
+    <form id="loginForm" class="login-form">
+      <div class="login-field"><input id="loginEmail" type="email" autocomplete="username" placeholder="Company Email (@pw.live)" required></div>
+      <div class="login-field"><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" required></div>
+      <button id="loginBtn" class="login-btn" type="submit">Sign in with Company Email</button>
+      <div id="loginLoading" class="login-loading">Signing in…</div>
+    </form>
+  </div>
+</section>
+
+<div id="appShell" style="display:none">
 <header class="header">
   <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading LIVE Vinculum Order report…</div></div></div>
   <div class="header-tools">
     <div class="header-search">⌕ <input id="globalOrderSearch" placeholder="Search Order No…" aria-label="Search Order No"></div>
     <div class="header-month"><label>MONTH</label><select id="globalMonthFilter"><option value="">All Months</option></select></div>
     <div class="actions"><label class="upload-label primary" for="file">＋ Upload Vinculum Excel</label><button onclick="loadCentralExcel()">↻ Refresh</button></div>
+    <div class="user-chip"><span class="user-email" id="loggedInUser"></span><button class="logout-btn" onclick="signOutUser()">Logout</button></div>
   </div>
   <input id="file" type="file" accept=".xlsx,.xlsb,.xlsm,.xls,.csv" hidden>
 </header>
@@ -123,6 +154,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </section>
 
 </main>
+</div>
 
 <script>
 let raw=[], current=[], orderRows=[];
@@ -222,7 +254,95 @@ async function loadCentralExcel(){
     raw=[];orderRows=[];populateFilters();renderOrders();
   }
 }
-loadCentralExcel();
+
+// =========================
+// Supabase Company Login
+// =========================
+const SUPABASE_URL = "https://nfacejugcsbmljqqswpy.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_nH2Bmsb9gm29Txb9-5pynw_-vzcFSHX";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+function showLoginError(message){
+  const e=$("loginError");
+  e.textContent=message;
+  e.style.display="block";
+}
+function clearLoginError(){
+  const e=$("loginError");
+  e.textContent="";
+  e.style.display="none";
+}
+function setLoginBusy(busy){
+  $("loginBtn").disabled=busy;
+  $("loginBtn").textContent=busy?"Signing in…":"Sign in with Company Email";
+  $("loginLoading").style.display=busy?"block":"none";
+}
+function isCompanyEmail(email){return /@pw\.live$/i.test(norm(email));}
+
+async function showDashboard(session){
+  const email=session?.user?.email||"";
+  $("loggedInUser").textContent=email;
+  $("loginScreen").style.display="none";
+  $("appShell").style.display="block";
+  await loadCentralExcel();
+}
+function showLogin(){
+  $("appShell").style.display="none";
+  $("loginScreen").style.display="flex";
+  $("loggedInUser").textContent="";
+}
+
+async function signInUser(email,password){
+  clearLoginError();
+  email=norm(email).toLowerCase();
+  if(!isCompanyEmail(email)){
+    showLoginError("Please use your company @pw.live email address.");
+    return;
+  }
+  if(!password){
+    showLoginError("Please enter your password.");
+    return;
+  }
+  setLoginBusy(true);
+  try{
+    const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+    if(error)throw error;
+    if(!data.session)throw new Error("Login session could not be created.");
+    await showDashboard(data.session);
+  }catch(err){
+    const msg=err?.message||"Login failed. Please check your company email and password.";
+    showLoginError(msg.includes("Invalid login credentials")?"Invalid company email or password.":msg);
+  }finally{
+    setLoginBusy(false);
+  }
+}
+
+async function signOutUser(){
+  try{await supabaseClient.auth.signOut();}catch(e){}
+  showLogin();
+  $("loginPassword").value="";
+  $("loginEmail").focus();
+}
+
+$("loginForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  signInUser($("loginEmail").value,$("loginPassword").value);
+});
+
+(async function initAuth(){
+  try{
+    const {data}=await supabaseClient.auth.getSession();
+    if(data?.session) await showDashboard(data.session);
+    else showLogin();
+    supabaseClient.auth.onAuthStateChange(async (_event,session)=>{
+      if(session) await showDashboard(session); else showLogin();
+    });
+  }catch(err){
+    console.error("Supabase auth initialization failed:",err);
+    showLoginError("Login service is unavailable right now. Please try again.");
+    showLogin();
+  }
+})();
 </script>
 </body>
 </html>
