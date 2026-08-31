@@ -43,12 +43,12 @@ LOGIN_URL = (
 # Credentials come from GitHub Repository Secrets.
 USERNAME = os.environ["VINCULUM_USERNAME"]
 PASSWORD = os.environ["VINCULUM_PASSWORD"]
-DATE_MODE = os.environ.get("VINCULUM_DATE_MODE", "LAST_7_DAYS").upper()
+DATE_MODE = os.environ.get("VINCULUM_DATE_MODE", "CURRENT_MONTH").upper()
 
-if DATE_MODE not in {"LAST_7_DAYS", "YESTERDAY"}:
+if DATE_MODE not in {"LAST_7_DAYS", "YESTERDAY", "CURRENT_MONTH"}:
     raise RuntimeError(
         f"Unsupported VINCULUM_DATE_MODE={DATE_MODE!r}. "
-        "Use LAST_7_DAYS or YESTERDAY."
+        "Use LAST_7_DAYS, YESTERDAY, or CURRENT_MONTH."
     )
 
 USERNAME_FIELD_ID = "userName"
@@ -340,6 +340,11 @@ def create_order_export_request(driver, wait):
         today = datetime.now()
         start_date = today - timedelta(days=1)
         end_date = start_date
+    elif DATE_MODE == "CURRENT_MONTH":
+        print("4) Date filter ko CURRENT MONTH set kar raha hoon...")
+        today = datetime.now()
+        start_date = today.replace(day=1)
+        end_date = today
     else:
         print(f"4) Date filter ko LAST {DATE_DAYS} DAYS set kar raha hoon...")
         today = datetime.now()
