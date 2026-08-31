@@ -14,6 +14,7 @@ Automatically:
 """
 
 import os
+import json
 
 # Credentials are supplied by GitHub Actions environment variables.
 VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
@@ -57,6 +58,7 @@ LOGIN_BUTTON_SELECTOR = "input[onclick*='doLoginJS']"
 # GitHub runner folders
 DOWNLOAD_FOLDER = os.path.abspath("data/downloads")
 OUTPUT_FILE = os.path.abspath("data.xlsx")
+META_FILE = os.path.abspath("data-meta.json")
 
 # ============================================================
 # ORDER ENQUIRY FILTERS
@@ -1006,10 +1008,17 @@ def extract_vinculum_data():
         # ----------------------------------------------------
         shutil.copy2(downloaded_file, OUTPUT_FILE)
 
+        # Dashboard ke liye "data actually kab generate hui" wala timestamp likho
+        # (UTC mein, ISO format - dashboard isko browser ki local time mein convert kar lega)
+        generated_at = datetime.utcnow().isoformat() + "Z"
+        with open(META_FILE, "w") as f:
+            json.dump({"generatedAt": generated_at}, f)
+
         print(
             f"SUCCESS: Latest Vinculum data saved as: "
             f"{OUTPUT_FILE}"
         )
+        print(f"Meta file likhi gayi: {META_FILE} (generatedAt: {generated_at})")
 
         print(
             f"Downloaded source file: "
