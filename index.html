@@ -170,7 +170,7 @@ function populateFilters(){fill("warehouse",orderLevel(raw).map(r=>get(r,["Fulfi
 function populateMonths(){const e=$("globalMonthFilter"),old=e.value,months=unique(orderLevel(raw).map(r=>dateKey(get(r,["Order create date","OrderDate"])).slice(0,7)));e.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");if(months.includes(old))e.value=old;}
 
 function renderOrders(){current=filteredRows();const total=current.length,qty=current.reduce((s,r)=>s+num(get(r,["Order Qty"])),0),picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;$("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");$("quickSummaryQty").textContent=qty.toLocaleString();$("monthSummaryOrders").textContent=total.toLocaleString();$("monthSummaryText").textContent=$("globalMonthFilter").value?$("globalMonthFilter").value:"All Months";$("searchSummaryCount").textContent=$("globalOrderSearch").value?total.toLocaleString():"0";$("searchSummaryText").textContent=$("globalOrderSearch").value?`Orders matching "${$("globalOrderSearch").value}"`:"Search an Order No.";
-const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate"]))).filter(Boolean);$("orderCoverage").textContent=dates.length?`Order data coverage: ${Math.min(...dates).toLocaleString()} → ${Math.max(...dates).toLocaleString()} • ${total.toLocaleString()} unique orders`:"Order data coverage: no data";
+const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate"]))).filter(Boolean).sort();$("orderCoverage").textContent=dates.length?`Order data coverage: ${dates[0]} → ${dates[dates.length-1]} • ${total.toLocaleString()} unique orders`:"Order data coverage: no data";
 const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yk=dateKey(yesterday),yr=orderLevel(raw).filter(r=>dateKey(get(r,["Order create date","OrderDate"]))===yk);$("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;$("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
 hbar("statusChart",counts(current,"Status"));hbar("warehouseChart",counts(current,"FulfillmentLocationName"));hbar("channelChart",counts(current,"finance_category"));const day={};current.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate"]));if(d)day[d]=(day[d]||0)+1});miniChart("dayChart",Object.entries(day).sort().slice(-14));
 const byMonth={};orderLevel(raw).forEach(r=>{const m=dateKey(get(r,["Order create date","OrderDate"])).slice(0,7);if(!m)return;if(!byMonth[m])byMonth[m]={o:0,q:0,p:0,s:0,op:0};byMonth[m].o++;byMonth[m].q+=num(get(r,["Order Qty"]));byMonth[m].p+=num(get(r,["Picked Qty"]));byMonth[m].s+=num(get(r,["Shipped Qty"]));byMonth[m].op+=num(get(r,["Open Qty"]))});$("monthSummaryTbody").innerHTML=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,x])=>`<tr><td>${m}</td><td>${x.o.toLocaleString()}</td><td>${x.q.toLocaleString()}</td><td>${x.p.toLocaleString()}</td><td>${x.s.toLocaleString()}</td><td>${x.op.toLocaleString()}</td></tr>`).join("");
@@ -196,7 +196,40 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 ["manifestWarehouse","manifestChannel","manifestStatus","manifestFrom","manifestTo"].forEach(id=>$(id).addEventListener("change",applyManifestFilters));
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();if($("manifestSlaTab").classList.contains("active-panel"))applyManifestFilters()});
 $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{raw=parseWorkbookBuffer(await f.arrayBuffer());if(!raw.length)throw Error("Excel is empty");populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();$("sourceText").textContent=`Live upload • ${raw.length.toLocaleString()} report rows • ${f.name} • ${new Date().toLocaleString()}`;}catch(err){alert("File read nahi ho payi: "+err.message)}e.target.value=""});
-async function loadCentralExcel(){try{const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("data.xlsx not found");raw=parseWorkbookBuffer(await r.arrayBuffer());if(!raw.length)throw Error("No order data found");populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();$("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Loaded ${new Date().toLocaleString()}`;}catch(e){$("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";raw=[];populateFilters();renderOrders();}}
+async function loadCentralExcel(){
+  try{
+    const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});
+    if(!r.ok)throw Error("data.xlsx not found");
+    const buf=await r.arrayBuffer();
+    raw=parseWorkbookBuffer(buf);
+    if(!raw.length)throw Error("No order data found");
+    populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();
+
+    // Prefer the actual data-generation time (written by the extraction script)
+    // over "page load time", so the header reflects when the data itself was
+    // fetched from Vinculum, not when the browser happened to open the page.
+    let generatedLabel = null;
+    try{
+      const metaRes = await fetch("data-meta.json?ts="+Date.now(), {cache:"no-store"});
+      if(metaRes.ok){
+        const meta = await metaRes.json();
+        if(meta && meta.generatedAt){
+          generatedLabel = new Date(meta.generatedAt).toLocaleString();
+        }
+      }
+    }catch(metaErr){ /* data-meta.json is optional - ignore if missing/broken */ }
+
+    if(!generatedLabel){
+      const lm = r.headers.get("Last-Modified");
+      generatedLabel = lm ? new Date(lm).toLocaleString() : (new Date().toLocaleString()+" (page load time - no data-meta.json found)");
+    }
+
+    $("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Data generated ${generatedLabel}`;
+  }catch(e){
+    $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
+    raw=[];populateFilters();renderOrders();
+  }
+}
 loadCentralExcel();
 </script>
 </body>
