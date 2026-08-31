@@ -14,6 +14,7 @@ Automatically:
 """
 
 import os
+import json
 
 # Credentials are supplied by GitHub Actions environment variables.
 VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
@@ -42,12 +43,12 @@ LOGIN_URL = (
 # Credentials come from GitHub Repository Secrets.
 USERNAME = os.environ["VINCULUM_USERNAME"]
 PASSWORD = os.environ["VINCULUM_PASSWORD"]
-DATE_MODE = os.environ.get("VINCULUM_DATE_MODE", "LAST_7_DAYS").upper()
+DATE_MODE = os.environ.get("VINCULUM_DATE_MODE", "CURRENT_MONTH").upper()
 
-if DATE_MODE not in {"LAST_7_DAYS", "YESTERDAY"}:
+if DATE_MODE not in {"LAST_7_DAYS", "YESTERDAY", "CURRENT_MONTH"}:
     raise RuntimeError(
         f"Unsupported VINCULUM_DATE_MODE={DATE_MODE!r}. "
-        "Use LAST_7_DAYS or YESTERDAY."
+        "Use LAST_7_DAYS, YESTERDAY, or CURRENT_MONTH."
     )
 
 USERNAME_FIELD_ID = "userName"
@@ -57,6 +58,7 @@ LOGIN_BUTTON_SELECTOR = "input[onclick*='doLoginJS']"
 # GitHub runner folders
 DOWNLOAD_FOLDER = os.path.abspath("data/downloads")
 OUTPUT_FILE = os.path.abspath("data.xlsx")
+META_FILE = os.path.abspath("data-meta.json")
 
 # ============================================================
 # ORDER ENQUIRY FILTERS
@@ -338,6 +340,11 @@ def create_order_export_request(driver, wait):
         today = datetime.now()
         start_date = today - timedelta(days=1)
         end_date = start_date
+    elif DATE_MODE == "CURRENT_MONTH":
+        print("4) Date filter ko CURRENT MONTH set kar raha hoon...")
+        today = datetime.now()
+        start_date = today.replace(day=1)
+        end_date = today
     else:
         print(f"4) Date filter ko LAST {DATE_DAYS} DAYS set kar raha hoon...")
         today = datetime.now()
@@ -1006,10 +1013,17 @@ def extract_vinculum_data():
         # ----------------------------------------------------
         shutil.copy2(downloaded_file, OUTPUT_FILE)
 
+        # Dashboard ke liye "data actually kab generate hui" wala timestamp likho
+        # (UTC mein, ISO format - dashboard isko browser ki local time mein convert kar lega)
+        generated_at = datetime.utcnow().isoformat() + "Z"
+        with open(META_FILE, "w") as f:
+            json.dump({"generatedAt": generated_at}, f)
+
         print(
             f"SUCCESS: Latest Vinculum data saved as: "
             f"{OUTPUT_FILE}"
         )
+        print(f"Meta file likhi gayi: {META_FILE} (generatedAt: {generated_at})")
 
         print(
             f"Downloaded source file: "
