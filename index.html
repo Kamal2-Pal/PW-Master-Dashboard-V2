@@ -4,24 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PW - Order Dashboard V2</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#182230}
-
-#loginOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#0d1117;display:flex;align-items:center;justify-content:center;z-index:9999}
-.login-card{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,0.3);text-align:center}
-.login-card .logo{width:50px;height:50px;border-radius:12px;background:#f57c00;display:grid;place-items:center;font-weight:900;color:#fff;font-size:24px;margin:0 auto 16px}
-.login-card h2{margin:0 0 8px;font-size:22px;color:#182230}
-.login-card p{font-size:13px;color:#657281;margin:0 0 24px;line-height:1.4}
-.login-form{display:flex;flex-direction:column;gap:14px}
-.login-form input{width:100%;padding:12px;border:1px solid #ccd5df;border-radius:8px;font-size:14px;outline:none}
-.login-form button{width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer}
-.login-form button:hover{background:#222}
-#loginError{color:#c52f2f;font-size:12px;margin-top:10px;display:none;font-weight:bold}
-
 .header{background:#151b23;color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}
 .title{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;border-radius:10px;background:#f57c00;display:grid;place-items:center;font-weight:900}
 h1{font-size:21px;margin:0 0 4px}.sub{font-size:12px;color:#aeb9c6}
@@ -57,49 +43,25 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}.risk{color:#a46d00;font-weight:800}.muted{color:#788594}
 .ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card h3{font-size:13px;margin:0 0 7px}.ops-card .big{font-size:24px;font-weight:800}
 .sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
-.remark-input{padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;width:180px}
-.save-btn{padding:4px 10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px}
-.save-btn:hover{background:#218838}
-.sheet-badge{font-size:11px;padding:2px 6px;border-radius:4px;background:#e3f2fd;color:#1565c0;font-weight:bold;margin-left:5px}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.header{align-items:flex-start;flex-direction:column}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
 </style>
 </head>
 <body>
-
-<div id="loginOverlay">
-  <div class="login-card">
-    <div class="logo">V</div>
-    <h2>PW - Master Dashboard</h2>
-    <p>Company login required.<br>Only authorised <b>@pw.live</b> accounts can access this dashboard.</p>
-    <div class="login-form">
-      <input type="email" id="loginEmail" placeholder="Company Email (@pw.live)" required>
-      <input type="password" id="loginPassword" placeholder="Password" required>
-      <button type="button" onclick="handleLogin()">Sign in with Company Email</button>
-    </div>
-    <div id="loginError"></div>
-  </div>
-</div>
-
 <header class="header">
-  <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading LIVE Vinculum & History Order reports…</div></div></div>
+  <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading LIVE Vinculum Order report…</div></div></div>
   <div class="header-tools">
     <div class="header-search">⌕ <input id="globalOrderSearch" placeholder="Search Order No…" aria-label="Search Order No"></div>
     <div class="header-month"><label>MONTH</label><select id="globalMonthFilter"><option value="">All Months</option></select></div>
-    <div class="actions">
-      <label class="upload-label primary" for="file">＋ Manual Excel Upload</label>
-      <label class="upload-label" for="remarkFile" style="background:#0288d1;color:#fff;border-color:#0288d1">📤 Bulk CSV Remarks Upload</label>
-      <button onclick="loadAllExcelData()">↻ Refresh</button>
-      <button onclick="handleLogout()" style="background:#c52f2f;color:#fff;border:none">Logout</button>
-    </div>
+    <div class="actions"><label class="upload-label primary" for="file">＋ Upload Vinculum Excel</label><button onclick="loadCentralExcel()">↻ Refresh</button></div>
   </div>
   <input id="file" type="file" accept=".xlsx,.xlsb,.xlsm,.xls,.csv" hidden>
-  <input id="remarkFile" type="file" accept=".xlsx,.xls,.csv" hidden>
 </header>
 
 <div class="tabs">
   <button class="tab active" data-tab="ordersTab">Order Fulfillment</button>
   <button class="tab" data-tab="slaTab">48H Ship SLA</button>
+  <button class="tab" data-tab="manifestSlaTab">48H Manifest SLA</button>
 </div>
 
 <main class="wrap">
@@ -156,576 +118,138 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <section class="card"><div class="section-title">Daily SLA %</div><div id="slaDayChart" class="chart"></div></section>
     <section class="card"><div class="section-title">SLA Rules</div><div class="note"><p>🟢 <b>Within SLA</b> — Actual Ship in ≤ 48 hours</p><p>🔴 <b>Breached</b> — Actual Ship after 48 hours or open beyond 48 hours</p><p>🟠 <b>At Risk</b> — open and due within next 6 hours</p><p>⚪ <b>Open &lt;48H</b> — still open within target</p></div></section>
   </div>
-  <section class="table-card"><div class="section-title">WH Remarks — Breached Orders (Col C Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
-  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks (Col B Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">WH Remarks — Breached Orders</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div></section>
+</section>
+
+<section id="manifestSlaTab" class="tab-panel">
+  <div class="sla-head"><div><h2>48H Manifest Milestone Dashboard</h2><div class="note">Milestone check: Order create date → Manifest Create Date. Target = 48 hours. Cancelled orders are excluded.</div></div><div class="sla-target">Target<br><b>48 Hours</b></div></div>
+  <div class="kpis" id="manifestKpis"></div>
+  <div class="filters">
+    <div class="field">Warehouse<select id="manifestWarehouse"><option value="">All Warehouses</option></select></div>
+    <div class="field">Finance Category<select id="manifestChannel"><option value="">All Finance Categories</option></select></div>
+    <div class="field">SLA Status<select id="manifestStatus"><option value="">All SLA Status</option></select></div>
+    <div class="field">From Date<input id="manifestFrom" type="date"></div>
+    <div class="field">To Date<input id="manifestTo" type="date"></div>
+    <button onclick="clearManifestFilters()">Clear Filters</button>
+  </div>
+  <div class="grid">
+    <section class="card"><div class="section-title">Manifest SLA Status</div><div id="manifestStatusChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">Warehouse-wise Manifest SLA</div><div id="manifestWarehouseChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">WH Remarks — Breached Orders</div><div id="remarksChart" class="hbars"></div></section>
+    <section class="card"><div class="section-title">Manifest SLA Rules</div><div class="note"><p>🟢 <b>Within SLA</b> — manifest created in ≤ 48 hours</p><p>🔴 <b>Breached</b> — manifest created after 48 hours or open beyond 48 hours</p><p>🟠 <b>At Risk</b> — no manifest yet and due within next 6 hours</p></div></section>
+  </div>
+  <section class="table-card" style="margin-bottom:16px"><div class="section-title">Open &gt;48H — Order-wise Remarks</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks</th></tr></thead><tbody id="manifestOpen48RemarksTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">48H Manifest SLA Order Details</div><div class="note" id="manifestNote"></div><div class="table-wrap"><table><thead id="manifestThead"></thead><tbody id="manifestTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">WH Remarks Summary — Breached Orders</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="remarksTbody"></tbody></table></div></section>
 </section>
 </main>
 
 <script>
-const SUPABASE_URL = "https://nfacejugcsbmljqqswpy.supabase.co";
-const SUPABASE_KEY = "sb_publishable_nH2Bmsb9gm29Txb9-5pynw_-vzcFSHX";
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-const GITHUB_REPO_OWNER = "Kamal2-Pal";
-const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
-
-// Updated Google Sheet Published CSV Link
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?output=csv";
-
-let savedDbRemarks = {};
-let googleSheetRemarksMap = {}; // { orderId: { openRemark, breachRemark } }
-
-window.addEventListener('DOMContentLoaded', async () => {
-  const { data: { session } } = await _supabase.auth.getSession();
-  if (session) {
-    document.getElementById('loginOverlay').style.display = 'none';
-    loadAllExcelData();
-  }
-});
-
-async function handleLogin() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errorDiv = document.getElementById('loginError');
-
-  if (!email.endsWith('@pw.live')) {
-    errorDiv.style.display = 'block';
-    errorDiv.textContent = 'Only @pw.live emails are authorized!';
-    return;
-  }
-
-  errorDiv.style.display = 'none';
-  const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-
-  if (error) {
-    errorDiv.style.display = 'block';
-    errorDiv.textContent = error.message;
-  } else {
-    document.getElementById('loginOverlay').style.display = 'none';
-    loadAllExcelData();
-  }
-}
-
-async function handleLogout() {
-  await _supabase.auth.signOut();
-  document.getElementById('loginOverlay').style.display = 'flex';
-}
-
-let raw=[], current=[];
+let raw=[], current=[], orderRows=[];
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm=v=>String(v??"").trim();
-
-function get(r,names){
-  if(!r) return "";
-  const keys=Object.keys(r);
-  for(const n of names){
-    if(Object.prototype.hasOwnProperty.call(r,n) && r[n]!=="" && r[n]!==null && r[n]!==undefined) return r[n];
-    const q=n.toLowerCase().replace(/[^a-z0-9]/g,"");
-    const k=keys.find(x=>x.toLowerCase().replace(/[^a-z0-9]/g,"")===q);
-    if(k && r[k]!=="" && r[k]!==null && r[k]!==undefined) return r[k];
-  }
-  return "";
-}
-
+function get(r,names){for(const n of names){if(r&&Object.prototype.hasOwnProperty.call(r,n)&&r[n]!==""&&r[n]!==null&&r[n]!==undefined)return r[n]} const keys=Object.keys(r||{}); for(const n of names){const q=n.toLowerCase().replace(/[^a-z0-9]/g,""); const k=keys.find(x=>x.toLowerCase().replace(/[^a-z0-9]/g,"")===q); if(k)return r[k]} return "";}
 function unique(a){return [...new Set(a.map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));}
 function num(v){const n=Number(String(v??"").replace(/,/g,""));return isFinite(n)?n:0;}
-
-function dateVal(v){
-  if(v===null||v===undefined||v==="") return null;
-  if(v instanceof Date) return isNaN(v.getTime()) ? null : v;
-  if(typeof v==="number"){
-    const d=XLSX.SSF.parse_date_code(v);
-    return d?new Date(d.y,d.m-1,d.d,d.H||0,d.M||0,d.S||0):null;
-  }
-  const s=String(v).trim();
-  let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-  if(m) return new Date(+m[1],+m[2]-1,+m[3]);
-  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
-  const d=new Date(s);
-  return isNaN(d.getTime())?null:d;
-}
-
-function dateKey(v){
-  const d=dateVal(v);
-  if(!d || isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const day = String(d.getDate()).padStart(2,"0");
-  return (y && m && day && !isNaN(y)) ? `${y}-${m}-${day}` : "";
-}
-
-function parseWorkbookBuffer(buf){
-  const wb=XLSX.read(buf,{type:"array",cellDates:true});
-  let bestRows=[];
-  for(const s of wb.SheetNames){
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[s],{defval:"",raw:true});
-    if(rows.length > bestRows.length) {
-      bestRows = rows;
-    }
-  }
-  return bestRows;
-}
-
-function orderLevel(rows){
-  const map=new Map();
-  rows.forEach(r=>{
-    const id=norm(get(r,["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-    if(!id) return;
-    if(!map.has(id)) map.set(id,{...r});
-    else{
-      const x=map.get(id);
-      ["Order Qty","Picked Qty","Shipped Qty","Open Qty"].forEach(k=>{
-        if(get(r,[k])) x[k]=num(get(x,[k]))+num(get(r,[k]));
-      });
-    }
-  });
-  return map.size > 0 ? [...map.values()] : rows;
-}
-
-function mergeAndDeduplicate(historyRows, currentRows) {
-  const map = new Map();
-
-  historyRows.forEach(row => {
-    const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-    if (orderId) map.set(orderId, { ...row });
-  });
-
-  currentRows.forEach(row => {
-    const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-    if (orderId) map.set(orderId, { ...row });
-  });
-
-  return Array.from(map.values());
-}
-
-// Fetch Google Sheets Data
-async function fetchGoogleSheetData() {
-  try {
-    const url = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
-    const response = await fetch(url);
-    if(!response.ok) return;
-    const csvText = await response.text();
-    
-    Papa.parse(csvText, {
-      header: true,
-      skipEmptyLines: true,
-      complete: function(results) {
-        googleSheetRemarksMap = {};
-        results.data.forEach(row => {
-          const keys = Object.keys(row);
-          if (keys.length === 0) return;
-
-          let orderId = "", openRemark = "", breachRemark = "";
-          
-          keys.forEach(k => {
-            const cleanKey = k.trim().toLowerCase();
-            if (cleanKey.includes("order")) orderId = norm(row[k]);
-            if (cleanKey.includes("open")) openRemark = norm(row[k]);
-            if (cleanKey.includes("breach") || cleanKey.includes("tat")) breachRemark = norm(row[k]);
-          });
-
-          // Fallback to Column positions (Col A, Col B, Col C)
-          if (!orderId && keys[0]) orderId = norm(row[keys[0]]);
-          if (!openRemark && keys[1]) openRemark = norm(row[keys[1]]);
-          if (!breachRemark && keys[2]) breachRemark = norm(row[keys[2]]);
-
-          if (orderId) {
-            googleSheetRemarksMap[orderId] = {
-              openRemark: openRemark,
-              breachRemark: breachRemark
-            };
-          }
-        });
-
-        if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
-          applySlaFilters();
-        }
-      }
-    });
-  } catch (err) {
-    console.warn("Google Sheet sync error:", err);
-  }
-}
-
-// Fetch DB Remarks
-async function fetchSavedDbRemarks() {
-  try {
-    const { data, error } = await _supabase.from('wh_remarks').select('order_id, wh_remark');
-    if (data && !error) {
-      savedDbRemarks = {};
-      data.forEach(item => {
-        savedDbRemarks[item.order_id] = item.wh_remark;
-      });
-    }
-  } catch (err) {
-    console.warn("Db remarks fetch error:", err);
-  }
-}
-
-// Save single remark to Supabase
-async function saveRemarkToDb(orderId) {
-  const inputEl = document.getElementById(`remark_input_${orderId}`);
-  if (!inputEl) return;
-  const newRemark = inputEl.value.trim();
-
-  try {
-    const { error } = await _supabase
-      .from('wh_remarks')
-      .upsert({ order_id: orderId, wh_remark: newRemark, updated_at: new Date().toISOString() });
-
-    if (error) {
-      alert("Error saving remark: " + error.message);
-    } else {
-      savedDbRemarks[orderId] = newRemark;
-      alert(`Remark updated for Order #${orderId}`);
-      applySlaFilters();
-    }
-  } catch (err) {
-    alert("Save failed: " + err.message);
-  }
-}
-
-function getEffectiveRemark(r, type = "general") {
-  const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-  
-  // Priority 1: Direct Supabase database edits
-  if (savedDbRemarks[orderId]) {
-    return savedDbRemarks[orderId];
-  }
-  
-  // Priority 2: Google Sheets Live Column Mapping
-  if (googleSheetRemarksMap[orderId]) {
-    if (type === "open" && googleSheetRemarksMap[orderId].openRemark) {
-      return googleSheetRemarksMap[orderId].openRemark;
-    }
-    if (type === "breach" && googleSheetRemarksMap[orderId].breachRemark) {
-      return googleSheetRemarksMap[orderId].breachRemark;
-    }
-    if (googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark) {
-      return googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark;
-    }
-  }
-
-  // Priority 3: Default Excel Columns
-  return norm(get(r, ["WH remarks","WH Remarks","WH remarks ","Remarks"]));
-}
-
-function fill(id,values,label){
-  const e=$(id),old=e.value,vals=unique(values);
-  e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  if(vals.includes(old))e.value=old;
-}
-
-function filteredRows(){
-  const w=$("warehouse").value,c=$("channel").value,s=$("status").value,o=$("orderType").value,f=$("fromDate").value,t=$("toDate").value,q=norm($("globalOrderSearch").value).toLowerCase(),m=$("globalMonthFilter").value;
-  return orderLevel(raw).filter(r=>{
-    const od=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
-    if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;
-    if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;
-    if(s&&norm(get(r,["Status"]))!==s)return false;
-    if(o&&norm(get(r,["Order Type","OrderType"]))!==o)return false;
-    if(f&&od<f)return false;
-    if(t&&od>t)return false;
-    if(m&&od.slice(0,7)!==m)return false;
-    if(q&&!norm(get(r,["Order No","OrderNo","Order Number","Order ID"])).toLowerCase().includes(q))return false;
-    return true;
-  });
-}
-
+function dateVal(v){if(v===null||v===undefined||v==="")return null;if(typeof v==="number"){const d=XLSX.SSF.parse_date_code(v);return d?new Date(d.y,d.m-1,d.d,d.H||0,d.M||0,d.S||0):null}const s=String(v).trim();let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return isNaN(d)?null:d;}
+function dateKey(v){const d=dateVal(v);return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`:"";}
+function orderLevel(rows){const map=new Map();rows.forEach(r=>{const id=norm(get(r,["Order No","OrderNo","Order Number"]));if(!id)return;if(!map.has(id))map.set(id,{...r});else{const x=map.get(id);["Order Qty","Picked Qty","Shipped Qty","Open Qty"].forEach(k=>{if(k in r)x[k]=num(x[k])+num(r[k])});}});return [...map.values()];}
+function hasOrderColumns(rows){return rows.some(r=>get(r,["Order No","OrderNo"])!==""&&get(r,["Order create date","OrderDate"])!=="");}
+function parseWorkbookBuffer(buf){const wb=XLSX.read(buf,{type:"array",cellDates:true});for(const s of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[s],{defval:"",raw:true});if(hasOrderColumns(rows))return rows}return [];}
+function fill(id,values,label){const e=$(id),old=e.value,vals=unique(values);e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");if(vals.includes(old))e.value=old;}
+function filteredRows(){const w=$("warehouse").value,c=$("channel").value,s=$("status").value,o=$("orderType").value,f=$("fromDate").value,t=$("toDate").value,q=norm($("globalOrderSearch").value).toLowerCase(),m=$("globalMonthFilter").value;return orderRows.filter(r=>{const od=dateKey(get(r,["Order create date","OrderDate"]));if(w&&norm(get(r,["FulfillmentLocationName"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category"]))!==c)return false;if(s&&norm(get(r,["Status"]))!==s)return false;if(o&&norm(get(r,["Order Type"]))!==o)return false;if(f&&od<f)return false;if(t&&od>t)return false;if(m&&od.slice(0,7)!==m)return false;if(q&&!norm(get(r,["Order No","OrderNo","Order Number"])).toLowerCase().includes(q))return false;return true});}
 function kpi(label,value){return `<div class="kpi"><small>${esc(label)}</small><strong>${Number(value||0).toLocaleString()}</strong></div>`}
 function counts(rows,key){const m={};rows.forEach(r=>{const v=norm(get(r,[key]))||"(Blank)";m[v]=(m[v]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1]);}
 function hbar(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="hbar"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${v/mx*100}%"></div></div><b>${v.toLocaleString()}</b></div>`).join("");}
 function miniChart(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="bar"><em>${v.toLocaleString()}</em><i style="height:${Math.max(3,v/mx*190)}px"></i><span>${esc(k.slice(5))}</span></div>`).join("");}
 
-function populateFilters(){
-  fill("warehouse",orderLevel(raw).map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
-  fill("channel",orderLevel(raw).map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
-  fill("status",orderLevel(raw).map(r=>get(r,["Status"])),"All Status");
-  fill("orderType",orderLevel(raw).map(r=>get(r,["Order Type","OrderType"])),"All Order Types");
-  populateMonths();
-}
+function populateFilters(){fill("warehouse",orderRows.map(r=>get(r,["FulfillmentLocationName"])),"All Warehouses");fill("channel",orderRows.map(r=>get(r,["finance_category","Finance Category"])),"All Finance Categories");fill("status",orderRows.map(r=>get(r,["Status"])),"All Status");fill("orderType",orderRows.map(r=>get(r,["Order Type"])),"All Order Types");populateMonths();}
+function populateMonths(){const e=$("globalMonthFilter"),old=e.value,months=unique(orderRows.map(r=>dateKey(get(r,["Order create date","OrderDate"])).slice(0,7)));e.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");if(months.includes(old))e.value=old;}
 
-function populateMonths(){
-  const e=$("globalMonthFilter"),old=e.value,months=unique(orderLevel(raw).map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7)));
-  e.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");
-  if(months.includes(old))e.value=old;
-}
+function renderOrders(){current=filteredRows();const total=current.length,qty=current.reduce((s,r)=>s+num(get(r,["Order Qty"])),0),picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;$("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");$("quickSummaryQty").textContent=qty.toLocaleString();$("monthSummaryOrders").textContent=total.toLocaleString();$("monthSummaryText").textContent=$("globalMonthFilter").value?$("globalMonthFilter").value:"All Months";$("searchSummaryCount").textContent=$("globalOrderSearch").value?total.toLocaleString():"0";$("searchSummaryText").textContent=$("globalOrderSearch").value?`Orders matching "${$("globalOrderSearch").value}"`:"Search an Order No.";
+const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate"]))).filter(Boolean).sort();$("orderCoverage").textContent=dates.length?`Order data coverage: ${dates[0]} → ${dates[dates.length-1]} • ${total.toLocaleString()} unique orders`:"Order data coverage: no data";
+const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yk=dateKey(yesterday),yr=orderRows.filter(r=>dateKey(get(r,["Order create date","OrderDate"]))===yk);$("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;$("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
+hbar("statusChart",counts(current,"Status"));hbar("warehouseChart",counts(current,"FulfillmentLocationName"));hbar("channelChart",counts(current,"finance_category"));const day={};current.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate"]));if(d)day[d]=(day[d]||0)+1});miniChart("dayChart",Object.entries(day).sort().slice(-14));
+const byMonth={};orderRows.forEach(r=>{const m=dateKey(get(r,["Order create date","OrderDate"])).slice(0,7);if(!m)return;if(!byMonth[m])byMonth[m]={o:0,q:0,p:0,s:0,op:0};byMonth[m].o++;byMonth[m].q+=num(get(r,["Order Qty"]));byMonth[m].p+=num(get(r,["Picked Qty"]));byMonth[m].s+=num(get(r,["Shipped Qty"]));byMonth[m].op+=num(get(r,["Open Qty"]))});$("monthSummaryTbody").innerHTML=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,x])=>`<tr><td>${m}</td><td>${x.o.toLocaleString()}</td><td>${x.q.toLocaleString()}</td><td>${x.p.toLocaleString()}</td><td>${x.s.toLocaleString()}</td><td>${x.op.toLocaleString()}</td></tr>`).join("");
+const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Picked Qty","Shipped Qty","Open Qty","Actual_ShipDate","Manifest Create Date"];$("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";$("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");$("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;}
 
-function renderOrders(){
-  current=filteredRows();
-  const total=current.length,qty=current.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0),picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;
-  $("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");
-  $("quickSummaryQty").textContent=qty.toLocaleString();
-  $("monthSummaryOrders").textContent=total.toLocaleString();
-  $("monthSummaryText").textContent=$("globalMonthFilter").value?$("globalMonthFilter").value:"All Months";
-  $("searchSummaryCount").textContent=$("globalOrderSearch").value?total.toLocaleString():"0";
-  $("searchSummaryText").textContent=$("globalOrderSearch").value?`Orders matching "${$("globalOrderSearch").value}"`:"Search an Order No.";
+function buildSlaRows(){const now=new Date();return filteredRows().map(r=>{const od=dateVal(get(r,["Order create date","OrderDate"])),sd=dateVal(get(r,["Actual_ShipDate","Actual_ShipDate "])),status=norm(get(r,["Status"])).toLowerCase();if(status==="cancelled")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};const due=new Date(od.getTime()+48*3600000),end=sd||now,h=(end-od)/3600000;const st=sd?(h<=48?"Within SLA":"Breached"):(h>48?"Open >48H":(h>=42?"At Risk":"Open <48H"));return {...r,_sla:st,_hours:h,_due:due,_slaMilestone:sd?"Actual_ShipDate":"Open - Actual_ShipDate blank"};});}
+function applySlaFilters(){const base=buildSlaRows(),w=$("slaWarehouse").value,c=$("slaChannel").value,s=$("slaStatus").value,f=$("slaFrom").value,t=$("slaTo").value;const rows=base.filter(r=>{if(w&&norm(get(r,["FulfillmentLocationName"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category"]))!==c)return false;if(s&&r._sla!==s)return false;const d=dateKey(get(r,["Order create date","OrderDate"]));if(f&&d<f)return false;if(t&&d>t)return false;return true});renderSla(rows);}
+function initSlaFilters(){const rows=buildSlaRows();fill("slaWarehouse",rows.map(r=>get(r,["FulfillmentLocationName"])),"All Warehouses");fill("slaChannel",rows.map(r=>get(r,["finance_category","Finance Category"])),"All Finance Categories");fill("slaStatus",rows.map(r=>r._sla),"All SLA Status");}
+function renderSla(rows){const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,openUnder=rows.filter(r=>r._sla==="Open <48H").length,measured=within+breach,pct=measured?within/measured*100:0;$("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");hbar("slaStatusChart",counts(rows,"_sla"));hbar("slaWarehouseChart",counts(rows,"FulfillmentLocationName"));const daily={};rows.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate"]));if(d){if(!daily[d])daily[d]={ok:0,total:0};daily[d].total++;if(r._sla==="Within SLA")daily[d].ok++}});miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?x.ok/x.total*100:0]));const br=rows.filter(r=>r._sla==="Breached"),remarks={};br.forEach(r=>{const x=norm(get(r,["WH remarks","WH Remarks","WH remarks "]))||"Blank / No Remarks";remarks[x]=(remarks[x]||0)+1});$("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";const open=rows.filter(r=>r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));$("slaOpen48RemarksTbody").innerHTML=open.map(r=>`<tr><td>${esc(get(r,["Order No"]))}</td><td>${esc(get(r,["FulfillmentLocationName"]))}</td><td>${esc(get(r,["Order create date","OrderDate"]))}</td><td>${r._hours.toFixed(1)}</td><td>${esc(norm(get(r,["WH remarks","WH Remarks","WH remarks "]))||"Blank / No Remarks")}</td></tr>`).join("")||"<tr><td colspan=5>No open orders above 48 hours.</td></tr>";const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];$("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>Milestone Used</th></tr>";$("slaTbody").innerHTML=rows.map(r=>{const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td>${esc(r._slaMilestone)}</td></tr>`}).join("");$("slaNote").textContent=`${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;}
 
-  const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))).filter(x=>x && x.length===10);
-  if(dates.length>0){
-    const minD = dates.reduce((a,b)=>a<b?a:b);
-    const maxD = dates.reduce((a,b)=>a>b?a:b);
-    $("orderCoverage").textContent=`Order data coverage: ${minD} → ${maxD} • ${total.toLocaleString()} unique orders`;
-  } else {
-    $("orderCoverage").textContent="Order data coverage: no valid date data";
-  }
+function buildManifestRows(){const now=new Date();return filteredRows().filter(r=>norm(get(r,["Status"])).toLowerCase()!=="cancelled").map(r=>{const od=dateVal(get(r,["Order create date","OrderDate"])),md=dateVal(get(r,["Manifest Create Date","Manifest Create Date "]));const remark=norm(get(r,["WH remarks","WH Remarks","WH remarks "]))||"Blank / No Remarks";if(!od)return {...r,_manifestSla:"No Order Create Date",_manifestHours:null,_manifestDue:null,_whRemarks:remark};const due=new Date(od.getTime()+48*3600000),h=((md||now)-od)/3600000;const st=md?(h<=48?"Within SLA":"Breached"):(h>48?"Breached":(h>=42?"At Risk":"Open"));return {...r,_manifestSla:st,_manifestHours:h,_manifestDue:due,_whRemarks:remark};}).filter(r=>r._manifestSla!=="No Order Create Date");}
+function initManifestFilters(){const rows=buildManifestRows();fill("manifestWarehouse",rows.map(r=>get(r,["FulfillmentLocationName"])),"All Warehouses");fill("manifestChannel",rows.map(r=>get(r,["finance_category","Finance Category"])),"All Finance Categories");fill("manifestStatus",rows.map(r=>r._manifestSla),"All SLA Status");}
+function applyManifestFilters(){const base=buildManifestRows(),w=$("manifestWarehouse").value,c=$("manifestChannel").value,s=$("manifestStatus").value,f=$("manifestFrom").value,t=$("manifestTo").value;const rows=base.filter(r=>{if(w&&norm(get(r,["FulfillmentLocationName"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category"]))!==c)return false;if(s&&r._manifestSla!==s)return false;const d=dateKey(get(r,["Order create date","OrderDate"]));if(f&&d<f)return false;if(t&&d>t)return false;return true});renderManifest(rows);}
+function renderManifest(rows){const total=rows.length,within=rows.filter(r=>r._manifestSla==="Within SLA").length,breach=rows.filter(r=>r._manifestSla==="Breached").length,risk=rows.filter(r=>r._manifestSla==="At Risk").length,open=rows.filter(r=>r._manifestSla==="Open").length,measured=within+breach,pct=measured?within/measured*100:0;$("manifestKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open",open],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");hbar("manifestStatusChart",counts(rows,"_manifestSla"));hbar("manifestWarehouseChart",counts(rows,"FulfillmentLocationName"));hbar("remarksChart",counts(rows.filter(r=>r._manifestSla==="Breached"),"_whRemarks"));const open48=rows.filter(r=>r._manifestSla==="Breached"&&!dateVal(get(r,["Manifest Create Date","Manifest Create Date "]))).sort((a,b)=>(b._manifestHours||0)-(a._manifestHours||0));$("manifestOpen48RemarksTbody").innerHTML=open48.map(r=>`<tr><td>${esc(get(r,["Order No"]))}</td><td>${esc(get(r,["FulfillmentLocationName"]))}</td><td>${esc(get(r,["Order create date","OrderDate"]))}</td><td>${r._manifestHours.toFixed(1)}</td><td>${esc(r._whRemarks)}</td></tr>`).join("")||"<tr><td colspan=5>No open orders above 48 hours.</td></tr>";const br=rows.filter(r=>r._manifestSla==="Breached"),rm={};br.forEach(r=>rm[r._whRemarks]=(rm[r._whRemarks]||0)+1);$("remarksTbody").innerHTML=Object.entries(rm).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","WH remarks"];$("manifestThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Manifest SLA</th><th>Hours Taken</th><th>SLA Due</th></tr>";$("manifestTbody").innerHTML=rows.map(r=>{const cls=r._manifestSla==="Within SLA"?"good":r._manifestSla==="Breached"?"bad":r._manifestSla==="At Risk"?"risk":"";return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._manifestSla)}</td><td>${r._manifestHours==null?"":r._manifestHours.toFixed(1)}</td><td>${r._manifestDue?r._manifestDue.toLocaleString():""}</td></tr>`}).join("");$("manifestNote").textContent=`${total.toLocaleString()} unique orders • Manifest SLA = Order create date → Manifest Create Date • target 48 hours.`;}
 
-  const yesterday=new Date();
-  yesterday.setDate(yesterday.getDate()-1);
-  const yk=dateKey(yesterday),yr=orderLevel(raw).filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))===yk);
-  $("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;
-  $("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
-
-  hbar("statusChart",counts(current,"Status"));
-  hbar("warehouseChart",counts(current,"FulfillmentLocationName"));
-  hbar("channelChart",counts(current,"finance_category"));
-
-  const day={};
-  current.forEach(r=>{
-    const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
-    if(d)day[d]=(day[d]||0)+1;
-  });
-  miniChart("dayChart",Object.entries(day).sort().slice(-14));
-
-  const byMonth={};
-  orderLevel(raw).forEach(r=>{
-    const m=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7);
-    if(!m)return;
-    if(!byMonth[m])byMonth[m]={o:0,q:0,p:0,s:0,op:0};
-    byMonth[m].o++;
-    byMonth[m].q+=num(get(r,["Order Qty","Qty"]));
-    byMonth[m].p+=num(get(r,["Picked Qty"]));
-    byMonth[m].s+=num(get(r,["Shipped Qty"]));
-    byMonth[m].op+=num(get(r,["Open Qty"]));
-  });
-  $("monthSummaryTbody").innerHTML=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,x])=>`<tr><td>${m}</td><td>${x.o.toLocaleString()}</td><td>${x.q.toLocaleString()}</td><td>${x.p.toLocaleString()}</td><td>${x.s.toLocaleString()}</td><td>${x.op.toLocaleString()}</td></tr>`).join("");
-
-  const cols=current.length?Object.keys(current[0]).slice(0,10):["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Picked Qty","Shipped Qty","Open Qty","Actual_ShipDate"];
-  $("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
-  $("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");
-  $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
-}
-
-function buildSlaRows(){
-  const now=new Date();
-  return orderLevel(filteredRows()).map(r=>{
-    const od=dateVal(get(r,["Order create date","OrderDate","Order_Date","Date"])),sd=dateVal(get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"])),status=norm(get(r,["Status"])).toLowerCase();
-    if(status==="cancelled")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};
-    if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};
-    const due=new Date(od.getTime()+48*3600000),end=sd||now,h=(end-od)/3600000;
-    const st=sd?(h<=48?"Within SLA":"Breached"):(h>48?"Open >48H":(h>=42?"At Risk":"Open <48H"));
-    return {...r,_sla:st,_hours:h,_due:due,_slaMilestone:sd?"Actual_ShipDate":"Open - Actual_ShipDate blank"};
-  });
-}
-
-function applySlaFilters(){
-  const base=buildSlaRows(),w=$("slaWarehouse").value,c=$("slaChannel").value,s=$("slaStatus").value,f=$("slaFrom").value,t=$("slaTo").value;
-  const rows=base.filter(r=>{
-    if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;
-    if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;
-    if(s&&r._sla!==s)return false;
-    const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
-    if(f&&d<f)return false;
-    if(t&&d>t)return false;
-    return true;
-  });
-  renderSla(rows);
-}
-
-function initSlaFilters(){
-  const rows=buildSlaRows();
-  fill("slaWarehouse",rows.map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
-  fill("slaChannel",rows.map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
-  fill("slaStatus",rows.map(r=>r._sla),"All SLA Status");
-}
-
-function renderSla(rows){
-  const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,measured=within+breach,pct=measured?(within/measured*100):0;
-  $("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
-  
-  hbar("slaStatusChart",counts(rows,"_sla"));
-  hbar("slaWarehouseChart",counts(rows,"FulfillmentLocationName"));
-
-  const daily={};
-  rows.forEach(r=>{
-    const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
-    if(d){
-      if(!daily[d])daily[d]={ok:0,total:0};
-      daily[d].total++;
-      if(r._sla==="Within SLA")daily[d].ok++;
-    }
-  });
-  miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?(x.ok/x.total*100):0]));
-
-  // WH Remarks Summary — Breached Orders (Mapped from Column C)
-  const br=rows.filter(r=>r._sla==="Breached"),remarks={};
-  br.forEach(r=>{
-    const x=getEffectiveRemark(r, "breach")||"Blank / No Remarks";
-    remarks[x]=(remarks[x]||0)+1;
-  });
-  $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
-
-  // Open >48H Orders (Mapped from Column B)
-  const open=rows.filter(r=>r._sla==="Open >48H" || r._sla==="Breached").sort((a,b)=>(b._hours||0)-(a._hours||0));
-  $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
-    const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
-    const currentRemark=getEffectiveRemark(r, "open");
-    return `<tr>
-      <td>${esc(orderId)}</td>
-      <td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td>
-      <td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td>
-      <td>${r._hours?r._hours.toFixed(1):"0.0"}</td>
-      <td><input type="text" id="remark_input_${orderId}" class="remark-input" value="${esc(currentRemark)}" placeholder="Enter WH remark..."></td>
-      <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}')">Save</button></td>
-    </tr>`;
-  }).join("")||"<tr><td colspan=6>No open orders above 48 hours or breached orders.</td></tr>";
-
-  const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
-  $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>WH Remark</th></tr>";
-  $("slaTbody").innerHTML=rows.slice(0,5000).map(r=>{
-    const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";
-    const rem=getEffectiveRemark(r);
-    return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td><b>${esc(rem)}</b></td></tr>`;
-  }).join("");
-  $("slaNote").textContent=`Showing ${Math.min(total,5000).toLocaleString()} of ${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
-}
-
-function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
+function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();}
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();}
+function clearManifestFilters(){["manifestWarehouse","manifestChannel","manifestStatus","manifestFrom","manifestTo"].forEach(id=>$(id).value="");initManifestFilters();applyManifestFilters();}
 
-document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
-  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-  document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
-  btn.classList.add("active");
-  $(btn.dataset.tab).classList.add("active-panel");
-  if(btn.dataset.tab==="slaTab"){initSlaFilters();applySlaFilters()}
-}));
-
-["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();if($("slaTab").classList.contains("active-panel")){initSlaFilters();applySlaFilters()}}));
+document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));btn.classList.add("active");$(btn.dataset.tab).classList.add("active-panel");if(btn.dataset.tab==="slaTab"){initSlaFilters();applySlaFilters()}if(btn.dataset.tab==="manifestSlaTab"){initManifestFilters();applyManifestFilters()}}));
+["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();if($("slaTab").classList.contains("active-panel")){initSlaFilters();applySlaFilters()}if($("manifestSlaTab").classList.contains("active-panel")){initManifestFilters();applyManifestFilters()}}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
-$("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
-
-// Bulk Remarks CSV/Excel Upload Option
-$("remarkFile").addEventListener("change",async e=>{
-  const f=e.target.files[0];
-  if(!f)return;
+["manifestWarehouse","manifestChannel","manifestStatus","manifestFrom","manifestTo"].forEach(id=>$(id).addEventListener("change",applyManifestFilters));
+$("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();if($("manifestSlaTab").classList.contains("active-panel"))applyManifestFilters()});
+$("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{raw=parseWorkbookBuffer(await f.arrayBuffer());if(!raw.length)throw Error("Excel is empty");orderRows=orderLevel(raw);populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();$("sourceText").textContent=`Live upload • ${raw.length.toLocaleString()} report rows • ${f.name} • ${new Date().toLocaleString()}`;}catch(err){alert("File read nahi ho payi: "+err.message)}e.target.value=""});
+async function loadCentralExcel(){
   try{
-    const rows = parseWorkbookBuffer(await f.arrayBuffer());
-    if(!rows.length) throw Error("File empty hai!");
+    const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});
+    if(!r.ok)throw Error("data.xlsx not found");
+    const buf=await r.arrayBuffer();
+    raw=parseWorkbookBuffer(buf);
+    if(!raw.length)throw Error("No order data found");
 
-    let upsertList = [];
-    rows.forEach(r => {
-      const orderId = norm(get(r, ["Order No", "OrderNo", "Order ID", "OrderID"]));
-      const remark = norm(get(r, ["WH remarks", "WH Remarks", "Remark", "Remarks"]));
-      if (orderId && remark) {
-        upsertList.push({ order_id: orderId, wh_remark: remark, updated_at: new Date().toISOString() });
+    // Optional one-time historical backfill: agar repo mein "history.xlsx" file
+    // hai (purane months ka data, jo automation ke rolling window se pehle ka hai),
+    // to usse bhi load karke merge kar do. Missing hone pe chup-chaap ignore karo.
+    let historyCount = 0;
+    try{
+      const hr = await fetch("history.xlsx?ts="+Date.now(), {cache:"no-store"});
+      if(hr.ok){
+        const hbuf = await hr.arrayBuffer();
+        const historyRows = parseWorkbookBuffer(hbuf);
+        if(historyRows.length){
+          raw = raw.concat(historyRows);
+          historyCount = historyRows.length;
+        }
       }
-    });
+    }catch(histErr){ /* history.xlsx optional - ignore if missing/broken */ }
 
-    if (upsertList.length > 0) {
-      const { error } = await _supabase.from('wh_remarks').upsert(upsertList);
-      if (error) alert("Bulk upload error: " + error.message);
-      else {
-        alert(`${upsertList.length} orders ke remarks successfully save ho gaye!`);
-        await fetchSavedDbRemarks();
-        applySlaFilters();
+    orderRows=orderLevel(raw);
+    populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();
+
+    // Prefer the actual data-generation time (written by the extraction script)
+    // over "page load time", so the header reflects when the data itself was
+    // fetched from Vinculum, not when the browser happened to open the page.
+    let generatedLabel = null;
+    try{
+      const metaRes = await fetch("data-meta.json?ts="+Date.now(), {cache:"no-store"});
+      if(metaRes.ok){
+        const meta = await metaRes.json();
+        if(meta && meta.generatedAt){
+          generatedLabel = new Date(meta.generatedAt).toLocaleString();
+        }
       }
-    } else {
-      alert("Koi valid 'Order No' aur 'WH Remarks' match nahi hua file mein.");
+    }catch(metaErr){ /* data-meta.json is optional - ignore if missing/broken */ }
+
+    if(!generatedLabel){
+      const lm = r.headers.get("Last-Modified");
+      generatedLabel = lm ? new Date(lm).toLocaleString() : (new Date().toLocaleString()+" (page load time - no data-meta.json found)");
     }
-  }catch(err){
-    alert("Bulk Upload Error: " + err.message);
+
+    const historyNote = historyCount ? ` + ${historyCount.toLocaleString()} historical rows` : "";
+    $("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows${historyNote} • data.xlsx • Data generated ${generatedLabel}`;
+  }catch(e){
+    $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
+    raw=[];orderRows=[];populateFilters();renderOrders();
   }
-  e.target.value="";
-});
-
-$("file").addEventListener("change",async e=>{
-  const f=e.target.files[0];
-  if(!f)return;
-  try{
-    const newlyUploadedData = parseWorkbookBuffer(await f.arrayBuffer());
-    if(!newlyUploadedData.length)throw Error("Excel is empty or no valid rows found");
-    
-    raw = mergeAndDeduplicate(raw, newlyUploadedData);
-
-    populateFilters();
-    renderOrders();
-    initSlaFilters();
-    applySlaFilters();
-    $("sourceText").textContent=`Manual Upload Merged • ${raw.length.toLocaleString()} total unique orders • File: ${f.name}`;
-  }catch(err){
-    alert("File read nahi ho payi: "+err.message);
-  }
-  e.target.value="";
-});
-
-async function loadAllExcelData(){
-  $("sourceText").textContent = "Loading live data.xlsx & history.xlsx…";
-  let currentMonthData = [];
-  let historyData = [];
-
-  await fetchSavedDbRemarks();
-  await fetchGoogleSheetData();
-
-  try {
-    const resCurrent = await fetch("data.xlsx?ts=" + Date.now(), { cache: "no-store" });
-    if (resCurrent.ok) {
-      currentMonthData = parseWorkbookBuffer(await resCurrent.arrayBuffer());
-    }
-  } catch (err) {
-    console.warn("data.xlsx fetch failed", err);
-  }
-
-  try {
-    const resHistory = await fetch("history.xlsx?ts=" + Date.now(), { cache: "no-store" });
-    if (resHistory.ok) {
-      historyData = parseWorkbookBuffer(await resHistory.arrayBuffer());
-    }
-  } catch (err) {
-    console.warn("history.xlsx fetch failed", err);
-  }
-
-  raw = mergeAndDeduplicate(historyData, currentMonthData);
-
-  if (raw.length === 0) {
-    $("sourceText").textContent = "No data loaded. Please verify data.xlsx or history.xlsx in repository.";
-    return;
-  }
-
-  populateFilters();
-  renderOrders();
-  initSlaFilters();
-  applySlaFilters();
-
-  fetchGitHubCommitTime();
 }
-
-async function fetchGitHubCommitTime() {
-  try {
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/commits?path=data.xlsx&page=1&per_page=1`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.length > 0) {
-        const commitDate = new Date(data[0].commit.committer.date).toLocaleString('en-IN', {
-          day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
-        });
-        $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} orders • Last Sync: ${commitDate}`;
-        return;
-      }
-    }
-  } catch (err) {
-    console.warn("GitHub commit fetch failed", err);
-  }
-  $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} total orders`;
-}
-
-// Live Google Sheet Refresh Interval (Every 30 Seconds)
-setInterval(() => {
-  fetchGoogleSheetData();
-}, 30000);
+loadCentralExcel();
 </script>
 </body>
 </html>
