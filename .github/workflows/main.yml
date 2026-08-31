@@ -11,7 +11,7 @@ jobs:
     env:
       VINCULUM_USERNAME: ${{ secrets.VINCULUM_USERNAME }}
       VINCULUM_PASSWORD: ${{ secrets.VINCULUM_PASSWORD }}
-      VINCULUM_DATE_MODE: LAST_7_DAYS
+      VINCULUM_DATE_MODE: CURRENT_MONTH
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
