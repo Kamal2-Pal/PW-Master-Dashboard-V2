@@ -203,6 +203,23 @@ async function loadCentralExcel(){
     const buf=await r.arrayBuffer();
     raw=parseWorkbookBuffer(buf);
     if(!raw.length)throw Error("No order data found");
+
+    // Optional one-time historical backfill: agar repo mein "history.xlsx" file
+    // hai (purane months ka data, jo automation ke rolling window se pehle ka hai),
+    // to usse bhi load karke merge kar do. Missing hone pe chup-chaap ignore karo.
+    let historyCount = 0;
+    try{
+      const hr = await fetch("history.xlsx?ts="+Date.now(), {cache:"no-store"});
+      if(hr.ok){
+        const hbuf = await hr.arrayBuffer();
+        const historyRows = parseWorkbookBuffer(hbuf);
+        if(historyRows.length){
+          raw = raw.concat(historyRows);
+          historyCount = historyRows.length;
+        }
+      }
+    }catch(histErr){ /* history.xlsx optional - ignore if missing/broken */ }
+
     orderRows=orderLevel(raw);
     populateFilters();renderOrders();initSlaFilters();applySlaFilters();initManifestFilters();applyManifestFilters();
 
@@ -225,7 +242,8 @@ async function loadCentralExcel(){
       generatedLabel = lm ? new Date(lm).toLocaleString() : (new Date().toLocaleString()+" (page load time - no data-meta.json found)");
     }
 
-    $("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Data generated ${generatedLabel}`;
+    const historyNote = historyCount ? ` + ${historyCount.toLocaleString()} historical rows` : "";
+    $("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows${historyNote} • data.xlsx • Data generated ${generatedLabel}`;
   }catch(e){
     $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
     raw=[];orderRows=[];populateFilters();renderOrders();
