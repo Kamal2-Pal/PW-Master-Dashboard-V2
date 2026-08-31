@@ -6,6 +6,7 @@
 <title>PW - Order Dashboard V2</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#182230}
@@ -59,6 +60,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .remark-input{padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;width:180px}
 .save-btn{padding:4px 10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px}
 .save-btn:hover{background:#218838}
+.sheet-badge{font-size:11px;padding:2px 6px;border-radius:4px;background:#e3f2fd;color:#1565c0;font-weight:bold;margin-left:5px}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.header{align-items:flex-start;flex-direction:column}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
 </style>
@@ -154,8 +156,8 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <section class="card"><div class="section-title">Daily SLA %</div><div id="slaDayChart" class="chart"></div></section>
     <section class="card"><div class="section-title">SLA Rules</div><div class="note"><p>🟢 <b>Within SLA</b> — Actual Ship in ≤ 48 hours</p><p>🔴 <b>Breached</b> — Actual Ship after 48 hours or open beyond 48 hours</p><p>🟠 <b>At Risk</b> — open and due within next 6 hours</p><p>⚪ <b>Open &lt;48H</b> — still open within target</p></div></section>
   </div>
-  <section class="table-card"><div class="section-title">WH Remarks — Breached Orders</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
-  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Update Live)</th><th>Action</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">WH Remarks — Breached Orders (Col C Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks (Col B Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div></section>
 </section>
 </main>
@@ -168,7 +170,11 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
+// Google Sheet Published CSV Link
+const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?gid=1507121858&single=true&output=csv";
+
 let savedDbRemarks = {};
+let googleSheetRemarksMap = {}; // { orderId: { openRemark, breachRemark } }
 
 window.addEventListener('DOMContentLoaded', async () => {
   const { data: { session } } = await _supabase.auth.getSession();
@@ -295,6 +301,43 @@ function mergeAndDeduplicate(historyRows, currentRows) {
   return Array.from(map.values());
 }
 
+// Fetch Google Sheets Data
+async function fetchGoogleSheetData() {
+  try {
+    const response = await fetch(GOOGLE_SHEET_CSV_URL + "&t=" + Date.now());
+    if(!response.ok) return;
+    const csvText = await response.text();
+    
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        googleSheetRemarksMap = {};
+        results.data.forEach(row => {
+          const keys = Object.keys(row);
+          if (keys.length === 0) return;
+
+          const orderId = norm(row[keys[0]] || "");
+          const openRemark = norm(row[keys[1]] || "");
+          const breachRemark = norm(row[keys[2]] || "");
+
+          if (orderId) {
+            googleSheetRemarksMap[orderId] = {
+              openRemark: openRemark,
+              breachRemark: breachRemark
+            };
+          }
+        });
+        if ($("slaTab").classList.contains("active-panel")) {
+          applySlaFilters();
+        }
+      }
+    });
+  } catch (err) {
+    console.warn("Google Sheet sync error:", err);
+  }
+}
+
 // Fetch DB Remarks
 async function fetchSavedDbRemarks() {
   try {
@@ -333,11 +376,28 @@ async function saveRemarkToDb(orderId) {
   }
 }
 
-function getEffectiveRemark(r) {
+function getEffectiveRemark(r, type = "general") {
   const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
+  
+  // Priority 1: Direct Supabase database edits
   if (savedDbRemarks[orderId]) {
     return savedDbRemarks[orderId];
   }
+  
+  // Priority 2: Google Sheets Live Column Mapping
+  if (googleSheetRemarksMap[orderId]) {
+    if (type === "open" && googleSheetRemarksMap[orderId].openRemark) {
+      return googleSheetRemarksMap[orderId].openRemark;
+    }
+    if (type === "breach" && googleSheetRemarksMap[orderId].breachRemark) {
+      return googleSheetRemarksMap[orderId].breachRemark;
+    }
+    if (googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark) {
+      return googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark;
+    }
+  }
+
+  // Priority 3: Default Excel Columns
   return norm(get(r, ["WH remarks","WH Remarks","WH remarks ","Remarks"]));
 }
 
@@ -488,17 +548,19 @@ function renderSla(rows){
   });
   miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?(x.ok/x.total*100):0]));
 
+  // WH Remarks Summary — Breached Orders (Mapped from Column C)
   const br=rows.filter(r=>r._sla==="Breached"),remarks={};
   br.forEach(r=>{
-    const x=getEffectiveRemark(r)||"Blank / No Remarks";
+    const x=getEffectiveRemark(r, "breach")||"Blank / No Remarks";
     remarks[x]=(remarks[x]||0)+1;
   });
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
+  // Open >48H Orders (Mapped from Column B)
   const open=rows.filter(r=>r._sla==="Open >48H" || r._sla==="Breached").sort((a,b)=>(b._hours||0)-(a._hours||0));
   $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
     const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
-    const currentRemark=getEffectiveRemark(r);
+    const currentRemark=getEffectiveRemark(r, "open");
     return `<tr>
       <td>${esc(orderId)}</td>
       <td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td>
@@ -594,6 +656,7 @@ async function loadAllExcelData(){
   let historyData = [];
 
   await fetchSavedDbRemarks();
+  await fetchGoogleSheetData();
 
   try {
     const resCurrent = await fetch("data.xlsx?ts=" + Date.now(), { cache: "no-store" });
@@ -646,6 +709,11 @@ async function fetchGitHubCommitTime() {
   }
   $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} total orders`;
 }
+
+// Live Google Sheet Refresh Interval (Every 30 Seconds)
+setInterval(() => {
+  fetchGoogleSheetData();
+}, 30000);
 </script>
 </body>
 </html>
