@@ -279,14 +279,39 @@ function setLoginBusy(busy){
 }
 function isCompanyEmail(email){return /@pw\.live$/i.test(norm(email));}
 
+// Keep track of which authenticated user has already initialized the dashboard.
+// Supabase can fire SIGNED_IN / TOKEN_REFRESHED events after sign-in. We must
+// NOT reload and re-parse data.xlsx for every auth event.
+let dashboardUserId = null;
+let dashboardInitPromise = null;
+
 async function showDashboard(session){
-  const email=session?.user?.email||"";
+  const user=session?.user;
+  const email=user?.email||"";
+  if(!user?.id) return;
+
+  // If this user's dashboard is already initialized, only refresh the visible
+  // email. Do not parse data.xlsx again.
+  if(dashboardUserId===user.id){
+    $("loggedInUser").textContent=email;
+    $("loginScreen").style.display="none";
+    $("appShell").style.display="block";
+    return dashboardInitPromise;
+  }
+
+  dashboardUserId=user.id;
   $("loggedInUser").textContent=email;
   $("loginScreen").style.display="none";
   $("appShell").style.display="block";
-  await loadCentralExcel();
+
+  // Initialize the dashboard exactly once for this authenticated user.
+  dashboardInitPromise=loadCentralExcel().finally(()=>{dashboardInitPromise=null;});
+  return dashboardInitPromise;
 }
+
 function showLogin(){
+  dashboardUserId=null;
+  dashboardInitPromise=null;
   $("appShell").style.display="none";
   $("loginScreen").style.display="flex";
   $("loggedInUser").textContent="";
@@ -331,12 +356,17 @@ $("loginForm").addEventListener("submit",e=>{
 
 (async function initAuth(){
   try{
+    // Register the listener first. Supabase may emit an auth event during
+    // initialization; showDashboard() is guarded so data.xlsx is still loaded
+    // only once per authenticated user.
+    supabaseClient.auth.onAuthStateChange((_event,session)=>{
+      if(session) showDashboard(session).catch(err=>console.error("Dashboard initialization failed:",err));
+      else showLogin();
+    });
+
     const {data}=await supabaseClient.auth.getSession();
     if(data?.session) await showDashboard(data.session);
     else showLogin();
-    supabaseClient.auth.onAuthStateChange(async (_event,session)=>{
-      if(session) await showDashboard(session); else showLogin();
-    });
   }catch(err){
     console.error("Supabase auth initialization failed:",err);
     showLoginError("Login service is unavailable right now. Please try again.");
