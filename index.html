@@ -212,7 +212,13 @@ async function handleLogout() {
   document.getElementById('loginOverlay').style.display = 'flex';
 }
 
-let raw=[], current=[];
+let raw=[], current=[], orderRows=[];
+// orderLevel(raw) used to be recalculated ~9 times per render (once per filter
+// dropdown, once inside filteredRows, once for "yesterday", once for the month
+// summary, once inside buildSlaRows...). On a large history.xlsx that repeated
+// full-dataset scan is what froze the tab / triggered "Page Unresponsive".
+// Now it's computed once per data load and cached here.
+function refreshOrderRows(){ orderRows = orderLevel(raw); }
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm=v=>String(v??"").trim();
@@ -425,7 +431,7 @@ function fill(id,values,label){
 
 function filteredRows(){
   const w=$("warehouse").value,c=$("channel").value,s=$("status").value,o=$("orderType").value,f=$("fromDate").value,t=$("toDate").value,q=norm($("globalOrderSearch").value).toLowerCase(),m=$("globalMonthFilter").value;
-  return orderLevel(raw).filter(r=>{
+  return orderRows.filter(r=>{
     const od=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
     if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;
     if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;
@@ -445,15 +451,15 @@ function hbar(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class=
 function miniChart(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="bar"><em>${v.toLocaleString()}</em><i style="height:${Math.max(3,v/mx*190)}px"></i><span>${esc(k.slice(5))}</span></div>`).join("");}
 
 function populateFilters(){
-  fill("warehouse",orderLevel(raw).map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
-  fill("channel",orderLevel(raw).map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
-  fill("status",orderLevel(raw).map(r=>get(r,["Status"])),"All Status");
-  fill("orderType",orderLevel(raw).map(r=>get(r,["Order Type","OrderType"])),"All Order Types");
+  fill("warehouse",orderRows.map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
+  fill("channel",orderRows.map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
+  fill("status",orderRows.map(r=>get(r,["Status"])),"All Status");
+  fill("orderType",orderRows.map(r=>get(r,["Order Type","OrderType"])),"All Order Types");
   populateMonths();
 }
 
 function populateMonths(){
-  const e=$("globalMonthFilter"),old=e.value,months=unique(orderLevel(raw).map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7)));
+  const e=$("globalMonthFilter"),old=e.value,months=unique(orderRows.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7)));
   e.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");
   if(months.includes(old))e.value=old;
 }
@@ -479,7 +485,7 @@ function renderOrders(){
 
   const yesterday=new Date();
   yesterday.setDate(yesterday.getDate()-1);
-  const yk=dateKey(yesterday),yr=orderLevel(raw).filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))===yk);
+  const yk=dateKey(yesterday),yr=orderRows.filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))===yk);
   $("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;
   $("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
 
@@ -495,7 +501,7 @@ function renderOrders(){
   miniChart("dayChart",Object.entries(day).sort().slice(-14));
 
   const byMonth={};
-  orderLevel(raw).forEach(r=>{
+  orderRows.forEach(r=>{
     const m=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7);
     if(!m)return;
     if(!byMonth[m])byMonth[m]={o:0,q:0,p:0,s:0,op:0};
@@ -517,7 +523,7 @@ const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivere
 
 function buildSlaRows(){
   const now=new Date();
-  return orderLevel(filteredRows()).map(r=>{
+  return filteredRows().map(r=>{
     const od=dateVal(get(r,["Order create date","OrderDate","Order_Date","Date"])),status=norm(get(r,["Status"])).toLowerCase();
     let sd=dateVal(get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"]));
     if(status==="cancelled"||status==="closed")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};
@@ -592,8 +598,12 @@ function renderSla(rows){
   });
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
-  // Open >48H Orders (Mapped from Column B)
-  const open=rows.filter(r=>r._sla==="Open >48H" || r._sla==="Breached").sort((a,b)=>(b._hours||0)-(a._hours||0));
+  // Open >48H Orders (Mapped from Column B).
+  // Only rows that are genuinely still open (no ship date on record yet) belong
+  // here - an order whose Status already says shipped/delivered and has a real
+  // Actual_ShipDate is "Breached", not "Open"; it's already covered in the
+  // "WH Remarks — Breached Orders" table above and should not also appear here.
+  const open=rows.filter(r=>r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));
   $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
     const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
     const currentRemark=getEffectiveRemark(r, "open");
@@ -605,7 +615,7 @@ function renderSla(rows){
       <td><input type="text" id="remark_input_${orderId}" class="remark-input" value="${esc(currentRemark)}" placeholder="Enter WH remark..."></td>
       <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}')">Save</button></td>
     </tr>`;
-  }).join("")||"<tr><td colspan=6>No open orders above 48 hours or breached orders.</td></tr>";
+  }).join("")||"<tr><td colspan=6>No orders currently open above 48 hours.</td></tr>";
 
   const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
   $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>WH Remark</th></tr>";
@@ -675,6 +685,7 @@ $("file").addEventListener("change",async e=>{
     
     raw = mergeAndDeduplicate(raw, newlyUploadedData);
 
+    refreshOrderRows();
     populateFilters();
     renderOrders();
     initSlaFilters();
@@ -719,6 +730,7 @@ async function loadAllExcelData(){
     return;
   }
 
+  refreshOrderRows();
   populateFilters();
   renderOrders();
   initSlaFilters();
