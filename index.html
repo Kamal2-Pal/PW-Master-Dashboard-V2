@@ -292,19 +292,30 @@ function orderLevel(rows){
 }
 
 function mergeAndDeduplicate(historyRows, currentRows) {
-  const map = new Map();
+  // currentRows is a fresh, full re-export of every line item still inside
+  // the live export window. Keying purely by Order No (old behaviour) would
+  // collapse a multi-line order - multiple SKU/line-item rows sharing one
+  // Order No - down to just its last row, silently dropping the other
+  // lines' quantity. That's what was changing "Order Qty" away from its
+  // true original total.
+  //
+  // Correct approach: keep every current-window line-item row untouched,
+  // and only pull in history rows for orders that have aged out of the
+  // current window entirely (their Order No doesn't appear in currentRows
+  // at all). This preserves multi-line orders and still avoids double-
+  // counting an order that exists in both files.
+  const orderIdOf = row => norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
 
-  historyRows.forEach(row => {
-    const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-    if (orderId) map.set(orderId, { ...row });
+  const currentOrderNos = new Set(
+    currentRows.map(orderIdOf).filter(Boolean)
+  );
+
+  const historyOnly = historyRows.filter(row => {
+    const orderId = orderIdOf(row);
+    return orderId && !currentOrderNos.has(orderId);
   });
 
-  currentRows.forEach(row => {
-    const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-    if (orderId) map.set(orderId, { ...row });
-  });
-
-  return Array.from(map.values());
+  return [...historyOnly, ...currentRows];
 }
 
 // Fetch Google Sheets Data
