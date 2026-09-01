@@ -517,7 +517,7 @@ function buildSlaRows(){
   const now=new Date();
   return orderLevel(filteredRows()).map(r=>{
     const od=dateVal(get(r,["Order create date","OrderDate","Order_Date","Date"])),sd=dateVal(get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"])),status=norm(get(r,["Status"])).toLowerCase();
-    if(status==="cancelled")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};
+    if(status==="cancelled"||status==="closed")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};
     if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};
     const due=new Date(od.getTime()+48*3600000),end=sd||now,h=(end-od)/3600000;
     const st=sd?(h<=48?"Within SLA":"Breached"):(h>48?"Open >48H":(h>=42?"At Risk":"Open <48H"));
