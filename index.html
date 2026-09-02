@@ -66,6 +66,15 @@ th,td{padding:8px;border-bottom:1px solid #edf0f3;text-align:left;white-space:no
 th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}.risk{color:#a46d00;font-weight:800}.muted{color:#788594}
 .ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card h3{font-size:13px;margin:0 0 7px}.ops-card .big{font-size:24px;font-weight:800}
+.zoho-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.zoho-card{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px}
+.zoho-card h3{font-size:13px;margin:0 0 7px}
+.zoho-card .big{font-size:26px;font-weight:800}
+.zoho-card .muted{margin-top:3px}
+.zoho-note{background:#eef6ff;border:1px solid #cfe5ff;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#476176}
+.zoho-section{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px;margin-bottom:16px}
+@media(max-width:1000px){.zoho-kpis{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.zoho-kpis{grid-template-columns:1fr}}
 .sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
 .remark-input{padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;width:180px}
 .save-btn{padding:4px 10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px}
@@ -136,6 +145,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 
 <div class="tabs">
   <button class="tab active" data-tab="ordersTab">Order Fulfillment</button>
+  <button class="tab" data-tab="zohoTab">Zoho Docs</button>
   <button class="tab" data-tab="slaTab">48H Ship SLA</button>
 </div>
 
@@ -174,6 +184,41 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <section class="card"><div class="section-title">Day-wise Orders</div><div id="dayChart" class="chart"></div></section>
   </div>
   <section class="table-card"><div class="section-title">Order Details</div><div class="note" id="rowNote"></div><div class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div></section>
+</section>
+
+<section id="zohoTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>Zoho Docs Dashboard</h2>
+      <div class="note">Zoho DOC No. requirement: TI & BOS = Required; DC & Blank = Not Required.</div>
+    </div>
+    <div class="sla-target">Document<br><b>TI / BOS</b></div>
+  </div>
+
+  <div class="zoho-kpis" id="zohoKpis"></div>
+
+  <div class="zoho-note">
+    <b>Rule:</b> Only <b>Doc_type_B2B = TI</b> or <b>BOS</b> is counted as requiring a Zoho DOC No.
+    <b>DC</b> and blank Doc_type_B2B are excluded. Counts are based on unique Order No.
+  </div>
+
+  <section class="zoho-section">
+    <div class="section-title">Date-wise Zoho DOC Summary</div>
+    <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoDateTbody"></tbody></table></div>
+  </section>
+
+  <section class="zoho-section">
+    <div class="section-title">Month-wise Zoho DOC Summary</div>
+    <div class="note">Order create month wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+    <div class="table-wrap"><table><thead><tr><th>Month</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoMonthTbody"></tbody></table></div>
+  </section>
+
+  <section class="table-card">
+    <div class="section-title">Zoho DOC No. Details</div>
+    <div class="note">Only required document types (TI/BOS) are shown.</div>
+    <div class="table-wrap"><table><thead><tr><th>Zoho DOC No.</th><th>Doc Type</th><th>Unique Orders</th><th>Order Qty</th><th>Order Create Date</th></tr></thead><tbody id="zohoDetailTbody"></tbody></table></div>
+  </section>
 </section>
 
 <section id="slaTab" class="tab-panel">
@@ -656,6 +701,7 @@ function renderOrders(){
   $("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
   $("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");
   $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
+  renderZohoDocs();
 }
 
 const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivered","shipped & returned"]);
@@ -764,6 +810,85 @@ function renderSla(rows){
     return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td><b>${esc(rem)}</b></td></tr>`;
   }).join("");
   $("slaNote").textContent=`Showing ${Math.min(total,5000).toLocaleString()} of ${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
+}
+
+function renderZohoDocs(){
+  const source = current && current.length ? current : orderRows;
+  const requiredRows = source.filter(r=>{
+    const t=norm(get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"])).toUpperCase();
+    return t==="TI" || t==="BOS";
+  });
+
+  const orderIdOf = r => norm(get(r,["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
+  const docOf = r => norm(get(r,["Zoho_DOCNo","Zoho DOCNo","Zoho_DocNo","Zoho DOC No","Zoho Doc No"]));
+  const dateOf = r => dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
+
+  // Deduplicate by Order No so multi-line orders do not inflate the KPIs.
+  const requiredByOrder = new Map();
+  requiredRows.forEach(r=>{
+    const id=orderIdOf(r);
+    if(!id) return;
+    if(!requiredByOrder.has(id)) requiredByOrder.set(id,{...r});
+    else{
+      const x=requiredByOrder.get(id);
+      // Prefer a non-blank Zoho DOC No and required Doc Type when another line has it.
+      if(!docOf(x) && docOf(r)) x.__zoho=docOf(r);
+      if(!get(x,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"]) && get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"])) {
+        x.__doctype=get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"]);
+      }
+    }
+  });
+
+  const requiredOrders=[...requiredByOrder.values()];
+  const getDoc=r=>norm(r.__zoho || docOf(r));
+  const getType=r=>norm(r.__doctype || get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"])).toUpperCase();
+
+  const availableOrders=requiredOrders.filter(r=>!!getDoc(r));
+  const missingOrders=requiredOrders.filter(r=>!getDoc(r));
+  const uniqueDocs=new Set(availableOrders.map(getDoc).filter(Boolean));
+
+  $("zohoKpis").innerHTML=[
+    ["Required Doc Orders",requiredOrders.length,"TI + BOS orders"],
+    ["Zoho DOC No. Available",uniqueDocs.size,"Unique Zoho DOC No."],
+    ["Missing DOC No.",missingOrders.length,"Required orders without Zoho DOC No."]
+  ].map(x=>`<div class="zoho-card"><h3>${esc(x[0])}</h3><div class="big">${Number(x[1]).toLocaleString()}</div><div class="muted">${esc(x[2])}</div></div>`).join("");
+
+  function groupSummary(keyFn){
+    const m=new Map();
+    requiredOrders.forEach(r=>{
+      const key=keyFn(r);
+      if(!key) return;
+      if(!m.has(key)) m.set(key,{orders:new Set(),docs:new Set(),missing:new Set()});
+      const x=m.get(key),id=orderIdOf(r),doc=getDoc(r);
+      if(id) x.orders.add(id);
+      if(doc) x.docs.add(doc);
+      else if(id) x.missing.add(id);
+    });
+    return [...m.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
+  }
+
+  $("zohoDateTbody").innerHTML=groupSummary(dateOf).map(([d,x])=>
+    `<tr><td>${esc(d)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
+  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found.</td></tr>`;
+
+  $("zohoMonthTbody").innerHTML=groupSummary(r=>dateOf(r).slice(0,7)).map(([m,x])=>
+    `<tr><td>${esc(m)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
+  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found.</td></tr>`;
+
+  const detailMap=new Map();
+  requiredOrders.forEach(r=>{
+    const doc=getDoc(r);
+    if(!doc) return;
+    if(!detailMap.has(doc)) detailMap.set(doc,{type:getType(r),orders:new Set(),qty:0,date:dateOf(r)});
+    const x=detailMap.get(doc),id=orderIdOf(r);
+    if(id) x.orders.add(id);
+    x.qty+=num(get(r,["Order Qty","Qty"]));
+    const d=dateOf(r);
+    if(d && (!x.date || d<x.date)) x.date=d;
+  });
+  $("zohoDetailTbody").innerHTML=[...detailMap.entries()].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true})).map(([doc,x])=>
+    `<tr><td><b>${esc(doc)}</b></td><td>${esc(x.type)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${esc(x.date)}</td></tr>`
+  ).join("") || `<tr><td colspan="5" class="muted">No Zoho DOC No. found for TI/BOS.</td></tr>`;
 }
 
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
