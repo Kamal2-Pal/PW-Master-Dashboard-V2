@@ -73,6 +73,12 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .zoho-card .muted{margin-top:3px}
 .zoho-note{background:#eef6ff;border:1px solid #cfe5ff;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#476176}
 .zoho-section{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px;margin-bottom:16px}
+.zoho-summary-head{display:flex;align-items:end;justify-content:space-between;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+.zoho-summary-head .section-title{margin:0}
+.zoho-filter{display:flex;align-items:end;gap:8px}
+.zoho-filter .field{min-width:165px}
+.zoho-filter select{min-width:165px}
+
 @media(max-width:1000px){.zoho-kpis{grid-template-columns:1fr 1fr}}
 @media(max-width:650px){.zoho-kpis{grid-template-columns:1fr}}
 .sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
@@ -203,14 +209,30 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   </div>
 
   <section class="zoho-section">
-    <div class="section-title">Date-wise Zoho DOC Summary</div>
-    <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">Date-wise Zoho DOC Summary</div>
+        <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+      </div>
+      <div class="zoho-filter">
+        <div class="field">Date Filter<select id="zohoDateFilter"><option value="">All Dates</option></select></div>
+        <button onclick="clearZohoDateFilter()">Clear</button>
+      </div>
+    </div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoDateTbody"></tbody></table></div>
   </section>
 
   <section class="zoho-section">
-    <div class="section-title">Month-wise Zoho DOC Summary</div>
-    <div class="note">Order create month wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">Month-wise Zoho DOC Summary</div>
+        <div class="note">Order create month wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+      </div>
+      <div class="zoho-filter">
+        <div class="field">Month Filter<select id="zohoMonthFilter"><option value="">All Months</option></select></div>
+        <button onclick="clearZohoMonthFilter()">Clear</button>
+      </div>
+    </div>
     <div class="table-wrap"><table><thead><tr><th>Month</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoMonthTbody"></tbody></table></div>
   </section>
 
@@ -812,6 +834,32 @@ function renderSla(rows){
   $("slaNote").textContent=`Showing ${Math.min(total,5000).toLocaleString()} of ${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
 }
 
+function populateZohoSummaryFilters(requiredRows){
+  const dateEl=$("zohoDateFilter"), monthEl=$("zohoMonthFilter");
+  const oldDate=dateEl?.value||"", oldMonth=monthEl?.value||"";
+  const dates=unique(requiredRows.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))));
+  const months=unique(dates.map(d=>d.slice(0,7)).filter(Boolean));
+
+  if(dateEl){
+    dateEl.innerHTML='<option value="">All Dates</option>'+dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
+    if(dates.includes(oldDate)) dateEl.value=oldDate;
+  }
+  if(monthEl){
+    monthEl.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
+    if(months.includes(oldMonth)) monthEl.value=oldMonth;
+  }
+}
+
+function clearZohoDateFilter(){
+  if($("zohoDateFilter")) $("zohoDateFilter").value="";
+  renderZohoDocs();
+}
+
+function clearZohoMonthFilter(){
+  if($("zohoMonthFilter")) $("zohoMonthFilter").value="";
+  renderZohoDocs();
+}
+
 function renderZohoDocs(){
   const source = current && current.length ? current : orderRows;
   const requiredRows = source.filter(r=>{
@@ -823,6 +871,14 @@ function renderZohoDocs(){
   const docOf = r => norm(get(r,["Zoho_DOCNo","Zoho DOCNo","Zoho_DocNo","Zoho DOC No","Zoho Doc No"]));
   const dateOf = r => dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
 
+  populateZohoSummaryFilters(requiredRows);
+
+  // Apply the user's existing/global filters to the KPI/detail base,
+  // while keeping the new Date and Month filters independent for their
+  // respective summary tables.
+  const dateFilter=$("zohoDateFilter")?.value||"";
+  const monthFilter=$("zohoMonthFilter")?.value||"";
+
   // Deduplicate by Order No so multi-line orders do not inflate the KPIs.
   const requiredByOrder = new Map();
   requiredRows.forEach(r=>{
@@ -831,7 +887,6 @@ function renderZohoDocs(){
     if(!requiredByOrder.has(id)) requiredByOrder.set(id,{...r});
     else{
       const x=requiredByOrder.get(id);
-      // Prefer a non-blank Zoho DOC No and required Doc Type when another line has it.
       if(!docOf(x) && docOf(r)) x.__zoho=docOf(r);
       if(!get(x,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"]) && get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"])) {
         x.__doctype=get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"]);
@@ -853,9 +908,9 @@ function renderZohoDocs(){
     ["Missing DOC No.",missingOrders.length,"Required orders without Zoho DOC No."]
   ].map(x=>`<div class="zoho-card"><h3>${esc(x[0])}</h3><div class="big">${Number(x[1]).toLocaleString()}</div><div class="muted">${esc(x[2])}</div></div>`).join("");
 
-  function groupSummary(keyFn){
+  function groupSummary(rows,keyFn){
     const m=new Map();
-    requiredOrders.forEach(r=>{
+    rows.forEach(r=>{
       const key=keyFn(r);
       if(!key) return;
       if(!m.has(key)) m.set(key,{orders:new Set(),docs:new Set(),missing:new Set()});
@@ -867,13 +922,16 @@ function renderZohoDocs(){
     return [...m.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
   }
 
-  $("zohoDateTbody").innerHTML=groupSummary(dateOf).map(([d,x])=>
-    `<tr><td>${esc(d)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
-  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found.</td></tr>`;
+  const dateRows = dateFilter ? requiredOrders.filter(r=>dateOf(r)===dateFilter) : requiredOrders;
+  const monthRows = monthFilter ? requiredOrders.filter(r=>dateOf(r).slice(0,7)===monthFilter) : requiredOrders;
 
-  $("zohoMonthTbody").innerHTML=groupSummary(r=>dateOf(r).slice(0,7)).map(([m,x])=>
+  $("zohoDateTbody").innerHTML=groupSummary(dateRows,dateOf).map(([d,x])=>
+    `<tr><td>${esc(d)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
+  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected date.</td></tr>`;
+
+  $("zohoMonthTbody").innerHTML=groupSummary(monthRows,r=>dateOf(r).slice(0,7)).map(([m,x])=>
     `<tr><td>${esc(m)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
-  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found.</td></tr>`;
+  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected month.</td></tr>`;
 
   const detailMap=new Map();
   requiredOrders.forEach(r=>{
@@ -890,7 +948,6 @@ function renderZohoDocs(){
     `<tr><td><b>${esc(doc)}</b></td><td>${esc(x.type)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${esc(x.date)}</td></tr>`
   ).join("") || `<tr><td colspan="5" class="muted">No Zoho DOC No. found for TI/BOS.</td></tr>`;
 }
-
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();}
 
@@ -902,8 +959,10 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
   if(btn.dataset.tab==="slaTab"){initSlaFilters();applySlaFilters()}
 }));
 
-["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();if($("slaTab").classList.contains("active-panel")){initSlaFilters();applySlaFilters()}}));
+["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();if($("slaTab").classList.contains("active-panel")){initSlaFilters();applySlaFilters()}if($("zohoTab").classList.contains("active-panel"))renderZohoDocs();}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
+$("zohoDateFilter").addEventListener("change",renderZohoDocs);
+$("zohoMonthFilter").addEventListener("change",renderZohoDocs);
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
 
 // Bulk Remarks CSV/Excel Upload Option
