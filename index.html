@@ -864,23 +864,28 @@ async function loadAllExcelData(){
 }
 
 async function fetchGitHubCommitTime() {
+  // data-meta.json's "generatedAt" is written fresh by the Python script on
+  // EVERY successful run, regardless of whether the exported data.xlsx bytes
+  // happened to be identical to the previous run. Using GitHub's commit
+  // history filtered by path=data.xlsx (old approach) could silently show a
+  // stale time, because Git only lists a commit for a given path if that
+  // file's content actually changed - if Vinculum returned an identical
+  // export, data.xlsx wouldn't show as "changed" in that commit even though
+  // the script genuinely ran and data-meta.json's timestamp did update.
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/commits?path=data.xlsx&page=1&per_page=1&ts=${Date.now()}`,
-      { cache: "no-store" }
-    );
+    const res = await fetch(`data-meta.json?ts=${Date.now()}`, { cache: "no-store" });
     if (res.ok) {
-      const data = await res.json();
-      if (data && data.length > 0) {
-        const commitDate = new Date(data[0].commit.committer.date).toLocaleString('en-IN', {
+      const meta = await res.json();
+      if (meta && meta.generatedAt) {
+        const syncDate = new Date(meta.generatedAt).toLocaleString('en-IN', {
           day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
         });
-        $("sourceText").textContent = `LIVE Orders (data.xlsx + history files) • ${raw.length.toLocaleString()} orders • Last Sync: ${commitDate}`;
+        $("sourceText").textContent = `LIVE Orders (data.xlsx + history files) • ${raw.length.toLocaleString()} orders • Last Sync: ${syncDate}`;
         return;
       }
     }
   } catch (err) {
-    console.warn("GitHub commit fetch failed", err);
+    console.warn("data-meta.json fetch failed", err);
   }
   $("sourceText").textContent = `LIVE Orders (data.xlsx + history files) • ${raw.length.toLocaleString()} total orders`;
 }
