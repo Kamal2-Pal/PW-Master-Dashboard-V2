@@ -867,7 +867,10 @@ async function loadAllExcelData(){
 
 async function fetchGitHubCommitTime() {
   try {
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/commits?path=data.xlsx&page=1&per_page=1`);
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/commits?path=data.xlsx&page=1&per_page=1&ts=${Date.now()}`,
+      { cache: "no-store" }
+    );
     if (res.ok) {
       const data = await res.json();
       if (data && data.length > 0) {
