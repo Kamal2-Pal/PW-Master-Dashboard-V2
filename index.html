@@ -22,26 +22,26 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#1
 .login-form button:hover{background:#222}
 #loginError{color:#c52f2f;font-size:12px;margin-top:10px;display:none;font-weight:bold}
 
-.header{background:#151b23;color:#fff;padding:14px 28px;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:18px;white-space:nowrap}
-.header-row-top{display:flex;align-items:center;justify-content:flex-start;gap:18px;flex:1;min-width:0;flex-wrap:nowrap}
-.header-row-bottom{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:0 0 auto;padding-top:0;border-top:0;flex-wrap:nowrap}
+.header{background:#151b23;color:#fff;padding:12px 24px;display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:14px;white-space:nowrap;overflow:hidden}
+.header-row-top{display:flex;align-items:center;justify-content:flex-start;gap:14px;flex:1 1 auto;min-width:0;flex-wrap:nowrap;overflow:hidden}
+.header-row-bottom{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto;padding-top:0;border-top:0;flex-wrap:nowrap}
 .title{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;border-radius:10px;background:#f57c00;display:grid;place-items:center;font-weight:900}
 h1{font-size:21px;margin:0 0 4px}.sub{font-size:12px;color:#aeb9c6}
-.header-search-month{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;flex:0 1 auto;min-width:0}
+.header-search-month{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:0 0 auto;min-width:0}
 .header-row-top .title{flex:0 0 auto}
 .header-search{flex:0 1 245px}
 .actions{flex-wrap:nowrap}
 .live-stats{flex-wrap:nowrap}
 
-.header-search{display:flex;align-items:center;background:#fff;border-radius:8px;height:40px;padding:0 12px;min-width:245px}
+.header-search{display:flex;align-items:center;background:#fff;border-radius:8px;height:40px;padding:0 10px;min-width:210px;width:210px}
 .header-search input{border:0;outline:0;width:100%;font-size:13px}
-.header-month{display:flex;align-items:center;gap:9px;background:#242c36;border:1px solid #38414c;border-radius:9px;padding:9px 14px}
-.header-month label{font-size:12px;font-weight:800}.header-month select{height:40px;min-width:150px;padding:0 10px;font-size:14px;border-radius:7px;border:1px solid #ccd5df}
+.header-month{display:flex;align-items:center;gap:7px;background:#242c36;border:1px solid #38414c;border-radius:9px;padding:6px 8px}
+.header-month label{font-size:11px;font-weight:800}.header-month select{height:36px;min-width:120px;width:120px;padding:0 7px;font-size:13px;border-radius:7px;border:1px solid #ccd5df}
 .actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.live-stats{display:flex;gap:10px}
-.stat-pill{background:#242c36;border:1px solid #38414c;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.live-stats{display:flex;gap:7px}
+.stat-pill{background:#242c36;border:1px solid #38414c;color:#fff;padding:7px 10px;border-radius:8px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .stat-pill .dot{width:8px;height:8px;border-radius:50%;background:#2ecc71;display:inline-block;box-shadow:0 0 6px #2ecc71}
-button,.upload-label{border:1px solid #d4dbe3;background:#fff;padding:9px 14px;border-radius:7px;font-weight:700;cursor:pointer}
+button,.upload-label{border:1px solid #d4dbe3;background:#fff;padding:8px 11px;border-radius:7px;font-weight:700;cursor:pointer;white-space:nowrap}
 .primary{background:#111;color:#fff;border-color:#111}
 .tabs{display:flex;gap:8px;padding:12px 24px;background:#1c2530;overflow:auto}
 .tab{background:#273341;color:#dce4ed;border:1px solid #3b4857;padding:10px 16px;border-radius:7px;white-space:nowrap}
@@ -73,14 +73,15 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .sheet-badge{font-size:11px;padding:2px 6px;border-radius:4px;background:#e3f2fd;color:#1565c0;font-weight:bold;margin-left:5px}
 
 @media(max-width:1450px){
-  .header{padding:12px 18px;gap:10px}
-  .header-row-top{gap:10px}
-  .header-row-bottom{gap:7px}
-  .header-search{min-width:200px;flex-basis:200px}
-  .header-month{padding:7px 9px}
-  .header-month select{min-width:120px}
-  .actions{gap:6px}
-  button,.upload-label{padding:8px 10px}
+  .header{padding:10px 14px;gap:8px}
+  .header-row-top{gap:8px}
+  .header-row-bottom{gap:5px}
+  .header-search{min-width:185px;width:185px}
+  .header-month{padding:5px 6px}
+  .header-month select{min-width:105px;width:105px}
+  .actions{gap:5px}
+  button,.upload-label{padding:7px 8px;font-size:12px}
+  .stat-pill{padding:6px 8px;font-size:10px}
 }
 @media(max-width:1150px){
   .header{white-space:normal;flex-wrap:wrap}
@@ -119,7 +120,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <div class="header-row-bottom">
     <div class="actions">
       <label class="upload-label primary" for="file">＋ Manual Excel Upload</label>
-      <label class="upload-label" for="remarkFile" style="background:#0288d1;color:#fff;border-color:#0288d1">📤 Bulk CSV Remarks Upload</label>
+      <label class="upload-label" for="remarkFile" style="background:#0288d1;color:#fff;border-color:#0288d1">📤 B-Remarks</label>
       <button onclick="loadAllExcelData()">↻ Refresh</button>
       <button onclick="handleLogout()" style="background:#c52f2f;color:#fff;border:none">Logout</button>
     </div>
