@@ -144,7 +144,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <div class="kpis" id="kpis"></div>
   <div class="coverage" id="orderCoverage">Order data coverage: calculating…</div>
   <section class="card" style="margin-bottom:16px">
-    <div class="section-title">Yesterday Summary</div>
+    <div class="section-title">D-2 Summary</div>
     <div class="note" id="yesterdayNote"></div>
     <div class="kpis" id="yesterdayCards" style="grid-template-columns:repeat(5,1fr);margin:0"></div>
   </section>
@@ -621,11 +621,12 @@ function renderOrders(){
     $("orderCoverage").textContent="Order data coverage: no valid date data";
   }
 
-  const yesterday=new Date();
-  yesterday.setDate(yesterday.getDate()-1);
-  const yk=dateKey(yesterday),yr=orderRows.filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))===yk);
-  $("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;
-  $("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
+  // D-2 = two calendar days before today.
+  const d2Date=new Date();
+  d2Date.setDate(d2Date.getDate()-2);
+  const d2Key=dateKey(d2Date),d2Rows=orderRows.filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))===d2Key);
+  $("yesterdayNote").textContent=`D-2 (${d2Key}) based on Order create date.`;
+  $("yesterdayCards").innerHTML=[["Unique Orders",d2Rows.length],["Order Qty",d2Rows.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0)],["Picked Qty",d2Rows.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",d2Rows.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",d2Rows.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
 
   hbar("statusChart",counts(current,"Status"));
   hbar("warehouseChart",counts(current,"FulfillmentLocationName"));
