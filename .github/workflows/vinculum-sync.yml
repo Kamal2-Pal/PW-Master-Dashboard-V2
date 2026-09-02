@@ -2,6 +2,11 @@ name: Vinculum API Sync
 
 on:
   workflow_dispatch:
+  schedule:
+    # Runs every 4 hours (UTC). GitHub Actions cron times are always UTC,
+    # so this is roughly 5:30am, 9:30am, 1:30pm, 5:30pm, 9:30pm, 1:30am IST.
+    # Adjust the interval below if you want it more/less frequent.
+    - cron: "0 */4 * * *"
 
 jobs:
   test-vinculum-connection:
