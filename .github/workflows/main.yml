@@ -8,6 +8,7 @@ permissions:
 jobs:
   extract-vinculum-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       VINCULUM_USERNAME: ${{ secrets.VINCULUM_USERNAME }}
       VINCULUM_PASSWORD: ${{ secrets.VINCULUM_PASSWORD }}
@@ -15,21 +16,51 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install Selenium
         run: |
           python -m pip install --upgrade pip
           pip install selenium
+
       - name: Run Vinculum Extract
+        id: extract
         run: |
           python "vinculum_extract_final.py"
+
+      # Runs ONLY if the extract step above failed (login timing, session
+      # conflict, slow export, etc.) - this is exactly the scenario that
+      # silently skips the commit step below on scheduled runs. Uploads
+      # whatever screenshot/page-source the script may have saved (if it
+      # writes any on error - add such a save-on-exception block in the
+      # Python script itself if it doesn't already) plus the full log, as a
+      # downloadable Actions artifact so the failure can actually be seen
+      # instead of just "no new commit happened".
+      - name: Upload failure diagnostics
+        if: failure() && steps.extract.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vinculum-extract-failure-${{ github.run_id }}
+          path: |
+            *.png
+            *.html
+            *.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Commit updated data.xlsx
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.xlsx data-meta.json
-          git diff --cached --quiet || git commit -m "Auto update Vinculum data"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to data.xlsx - nothing to commit (extract may have produced identical data, or failed before this point)."
+          else
+            git commit -m "Auto update Vinculum data"
+            git push
+            echo "Committed and pushed updated data.xlsx."
+          fi
