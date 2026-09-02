@@ -22,12 +22,17 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#1
 .login-form button:hover{background:#222}
 #loginError{color:#c52f2f;font-size:12px;margin-top:10px;display:none;font-weight:bold}
 
-.header{background:#151b23;color:#fff;padding:20px 28px;display:flex;flex-direction:column;gap:18px}
-.header-row-top{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
-.header-row-bottom{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:16px;border-top:1px solid #262f3a}
+.header{background:#151b23;color:#fff;padding:14px 28px;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:18px;white-space:nowrap}
+.header-row-top{display:flex;align-items:center;justify-content:flex-start;gap:18px;flex:1;min-width:0;flex-wrap:nowrap}
+.header-row-bottom{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:0 0 auto;padding-top:0;border-top:0;flex-wrap:nowrap}
 .title{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;border-radius:10px;background:#f57c00;display:grid;place-items:center;font-weight:900}
 h1{font-size:21px;margin:0 0 4px}.sub{font-size:12px;color:#aeb9c6}
-.header-search-month{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.header-search-month{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;flex:0 1 auto;min-width:0}
+.header-row-top .title{flex:0 0 auto}
+.header-search{flex:0 1 245px}
+.actions{flex-wrap:nowrap}
+.live-stats{flex-wrap:nowrap}
+
 .header-search{display:flex;align-items:center;background:#fff;border-radius:8px;height:40px;padding:0 12px;min-width:245px}
 .header-search input{border:0;outline:0;width:100%;font-size:13px}
 .header-month{display:flex;align-items:center;gap:9px;background:#242c36;border:1px solid #38414c;border-radius:9px;padding:9px 14px}
@@ -66,6 +71,23 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .save-btn{padding:4px 10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px}
 .save-btn:hover{background:#218838}
 .sheet-badge{font-size:11px;padding:2px 6px;border-radius:4px;background:#e3f2fd;color:#1565c0;font-weight:bold;margin-left:5px}
+
+@media(max-width:1450px){
+  .header{padding:12px 18px;gap:10px}
+  .header-row-top{gap:10px}
+  .header-row-bottom{gap:7px}
+  .header-search{min-width:200px;flex-basis:200px}
+  .header-month{padding:7px 9px}
+  .header-month select{min-width:120px}
+  .actions{gap:6px}
+  button,.upload-label{padding:8px 10px}
+}
+@media(max-width:1150px){
+  .header{white-space:normal;flex-wrap:wrap}
+  .header-row-top{flex:1 1 100%;flex-wrap:wrap}
+  .header-row-bottom{flex:1 1 100%;justify-content:space-between}
+}
+
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
 </style>
