@@ -1,0 +1,42 @@
+name: Open Orders Report
+
+on:
+  workflow_run:
+    workflows: ["Vinculum Auto Extract"]
+    types:
+      - completed
+
+  workflow_dispatch:
+
+jobs:
+  generate-open-orders:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl
+
+      - name: Generate Open Orders Report
+        run: |
+          python send_daily_report.py
+
+      - name: Upload Open Orders Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-orders-report
+          path: open_orders_email.html
+          if-no-files-found: error
