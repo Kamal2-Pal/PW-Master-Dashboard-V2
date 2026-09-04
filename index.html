@@ -829,10 +829,6 @@ function renderSla(rows){
   });
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
-  // Total Open Orders Summary — everything still open (not yet shipped/cancelled).
-  const totalOpen=openLt48+risk+open48;
-  $("slaOpenSummaryKpis").innerHTML=[["Open <48H",openLt48],["At Risk",risk],["Open >48H",open48],["Total Open Orders",totalOpen]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
-
   // Total Open Orders — Order-wise Remarks. Same table format as the
   // Open >48H table below, but covers all still-open orders (Open <48H,
   // At Risk, Open >48H combined) instead of just the >48H bucket.
