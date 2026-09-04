@@ -261,6 +261,11 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <section class="card"><div class="section-title">SLA Rules</div><div class="note"><p>🟢 <b>Within SLA</b> — Actual Ship in ≤ 48 hours</p><p>🔴 <b>Breached</b> — Actual Ship after 48 hours or open beyond 48 hours</p><p>🟠 <b>At Risk</b> — open and due within next 6 hours</p><p>⚪ <b>Open &lt;48H</b> — still open within target</p></div></section>
   </div>
   <section class="table-card"><div class="section-title">WH Remarks — Breached Orders (Col C Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
+  <section class="table-card" style="margin-bottom:16px">
+    <div class="section-title">Total Open Orders — Order-wise Remarks</div>
+    <div class="note">Orders not yet shipped/cancelled — Open &lt;48H, At Risk and Open &gt;48H combined.</div>
+    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>SLA Status</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaTotalOpenTbody"></tbody></table></div>
+  </section>
   <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks (Col B Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div></section>
 </section>
@@ -581,8 +586,8 @@ async function fetchSavedDbRemarks() {
 }
 
 // Save single remark to Supabase
-async function saveRemarkToDb(orderId) {
-  const inputEl = document.getElementById(`remark_input_${orderId}`);
+async function saveRemarkToDb(orderId, inputPrefix="") {
+  const inputEl = document.getElementById(`remark_input_${inputPrefix}${orderId}`);
   if (!inputEl) return;
   const newRemark = inputEl.value.trim();
 
@@ -799,8 +804,8 @@ function initSlaFilters(){
 }
 
 function renderSla(rows){
-  const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,measured=within+breach,pct=measured?(within/measured*100):0;
-  $("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
+  const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,openLt48=rows.filter(r=>r._sla==="Open <48H").length,open48=rows.filter(r=>r._sla==="Open >48H").length,measured=within+breach,pct=measured?(within/measured*100):0,breachPct=measured?(breach/measured*100):0;
+  $("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open <48H",openLt48],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"],["Breached %",breachPct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
   
   hbar("slaStatusChart",counts(rows,"_sla"));
   hbar("slaWarehouseChart",counts(rows,"FulfillmentLocationName"));
@@ -823,6 +828,29 @@ function renderSla(rows){
     remarks[x]=(remarks[x]||0)+1;
   });
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
+
+  // Total Open Orders Summary — everything still open (not yet shipped/cancelled).
+  const totalOpen=openLt48+risk+open48;
+  $("slaOpenSummaryKpis").innerHTML=[["Open <48H",openLt48],["At Risk",risk],["Open >48H",open48],["Total Open Orders",totalOpen]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
+
+  // Total Open Orders — Order-wise Remarks. Same table format as the
+  // Open >48H table below, but covers all still-open orders (Open <48H,
+  // At Risk, Open >48H combined) instead of just the >48H bucket.
+  const totalOpenRows=rows.filter(r=>r._sla==="Open <48H"||r._sla==="At Risk"||r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));
+  $("slaTotalOpenTbody").innerHTML=totalOpenRows.map(r=>{
+    const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
+    const currentRemark=getEffectiveRemark(r, "open");
+    const cls=r._sla==="Open >48H"?"bad":r._sla==="At Risk"?"risk":"muted";
+    return `<tr>
+      <td>${esc(orderId)}</td>
+      <td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td>
+      <td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td>
+      <td class="${cls}">${esc(r._sla)}</td>
+      <td>${r._hours?r._hours.toFixed(1):"0.0"}</td>
+      <td><input type="text" id="remark_input_totalopen_${orderId}" class="remark-input" value="${esc(currentRemark)}" placeholder="Enter WH remark..."></td>
+      <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}','totalopen_')">Save</button></td>
+    </tr>`;
+  }).join("")||"<tr><td colspan=7>No open orders currently.</td></tr>";
 
   // Open >48H Orders (Mapped from Column B).
   // Only rows that are genuinely still open (no ship date on record yet) belong
