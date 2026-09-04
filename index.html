@@ -670,6 +670,7 @@ function populateMonths(){
 }
 
 function renderOrders(){
+  markSecondaryTabsDirty();
   current=filteredRows();
   const total=current.length,qty=current.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0),picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;
   $("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");
@@ -723,10 +724,28 @@ function renderOrders(){
   $("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
   $("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");
   $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
-  renderZohoDocs();
 }
 
 const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivered","shipped & returned"]);
+
+// SLA and Zoho tab content used to be recomputed constantly in the background
+// (on every keystroke in search, every filter change, every render) even when
+// neither tab was visible - and worse, opening the SLA tab ran buildSlaRows()
+// TWICE (once inside initSlaFilters, once inside applySlaFilters). That
+// combination is what made switching to "48H Ship SLA" or "Zoho Docs" take
+// 3-5 seconds. Fix: only recompute a tab's data when that tab is actually the
+// one being shown, and cache the result (slaDirty/zohoDirty) so re-switching
+// back to an already-fresh tab is instant instead of recomputing again.
+let slaBaseRows=[];
+let slaDirty=true, zohoDirty=true;
+function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; }
+function refreshActiveTabIfNeeded(){
+  if($("slaTab").classList.contains("active-panel")){
+    if(slaDirty){ initSlaFilters(); applySlaFilters(); slaDirty=false; }
+  } else if($("zohoTab").classList.contains("active-panel")){
+    if(zohoDirty){ renderZohoDocs(); zohoDirty=false; }
+  }
+}
 
 function buildSlaRows(){
   const now=new Date();
@@ -759,8 +778,8 @@ function buildSlaRows(){
 }
 
 function applySlaFilters(){
-  const base=buildSlaRows(),w=$("slaWarehouse").value,c=$("slaChannel").value,s=$("slaStatus").value,f=$("slaFrom").value,t=$("slaTo").value;
-  const rows=base.filter(r=>{
+  const w=$("slaWarehouse").value,c=$("slaChannel").value,s=$("slaStatus").value,f=$("slaFrom").value,t=$("slaTo").value;
+  const rows=slaBaseRows.filter(r=>{
     if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;
     if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;
     if(s&&r._sla!==s)return false;
@@ -773,10 +792,10 @@ function applySlaFilters(){
 }
 
 function initSlaFilters(){
-  const rows=buildSlaRows();
-  fill("slaWarehouse",rows.map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
-  fill("slaChannel",rows.map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
-  fill("slaStatus",rows.map(r=>r._sla),"All SLA Status");
+  slaBaseRows=buildSlaRows();
+  fill("slaWarehouse",slaBaseRows.map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
+  fill("slaChannel",slaBaseRows.map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
+  fill("slaStatus",slaBaseRows.map(r=>r._sla),"All SLA Status");
 }
 
 function renderSla(rows){
@@ -948,22 +967,22 @@ function renderZohoDocs(){
     `<tr><td><b>${esc(doc)}</b></td><td>${esc(x.type)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${esc(x.date)}</td></tr>`
   ).join("") || `<tr><td colspan="5" class="muted">No Zoho DOC No. found for TI/BOS.</td></tr>`;
 }
-function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
-function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();}
+function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();refreshActiveTabIfNeeded();}
+function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();slaDirty=false;}
 
 document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
   btn.classList.add("active");
   $(btn.dataset.tab).classList.add("active-panel");
-  if(btn.dataset.tab==="slaTab"){initSlaFilters();applySlaFilters()}
+  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"){refreshActiveTabIfNeeded()}
 }));
 
-["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();if($("slaTab").classList.contains("active-panel")){initSlaFilters();applySlaFilters()}if($("zohoTab").classList.contains("active-panel"))renderZohoDocs();}));
+["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("zohoDateFilter").addEventListener("change",renderZohoDocs);
 $("zohoMonthFilter").addEventListener("change",renderZohoDocs);
-$("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
+$("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
 
 // Bulk Remarks CSV/Excel Upload Option
 $("remarkFile").addEventListener("change",async e=>{
@@ -1011,8 +1030,7 @@ $("file").addEventListener("change",async e=>{
     refreshOrderRows();
     populateFilters();
     renderOrders();
-    initSlaFilters();
-    applySlaFilters();
+    refreshActiveTabIfNeeded();
     $("sourceText").textContent=`Manual Upload Merged • ${raw.length.toLocaleString()} total unique orders • File: ${f.name}`;
   }catch(err){
     alert("File read nahi ho payi: "+err.message);
@@ -1072,8 +1090,7 @@ async function loadAllExcelData(){
   refreshOrderRows();
   populateFilters();
   renderOrders();
-  initSlaFilters();
-  applySlaFilters();
+  refreshActiveTabIfNeeded();
 
   fetchGitHubCommitTime();
 }
