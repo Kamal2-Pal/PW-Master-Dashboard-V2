@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: vinculum-data-commit
+  cancel-in-progress: false
 jobs:
   extract-vinculum-data:
     runs-on: ubuntu-latest
@@ -22,24 +25,19 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Selenium
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install selenium
+          pip install selenium openpyxl
 
       - name: Run Vinculum Extract
         id: extract
         run: |
           python "vinculum_extract_final.py"
 
-      # Runs ONLY if the extract step above failed (login timing, session
-      # conflict, slow export, etc.) - this is exactly the scenario that
-      # silently skips the commit step below on scheduled runs. Uploads
-      # whatever screenshot/page-source the script may have saved (if it
-      # writes any on error - add such a save-on-exception block in the
-      # Python script itself if it doesn't already) plus the full log, as a
-      # downloadable Actions artifact so the failure can actually be seen
-      # instead of just "no new commit happened".
+      # Runs ONLY if the extract step above failed - uploads whatever
+      # screenshot/page-source/log the script may have saved on error, as a
+      # downloadable Actions artifact, so a failure can actually be diagnosed.
       - name: Upload failure diagnostics
         if: failure() && steps.extract.outcome == 'failure'
         uses: actions/upload-artifact@v4
@@ -52,15 +50,50 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Sends the Open Orders (Open <48H + At Risk + Open >48H) summary email
+      # via Brevo. Only runs if extraction actually succeeded - a failed
+      # extraction means data.xlsx wasn't refreshed, so sending an alert off
+      # stale/partial data would be misleading.
+      - name: Send Open Orders email alert
+        if: steps.extract.outcome == 'success'
+        env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
+          ALERT_RECIPIENTS: ${{ secrets.ALERT_RECIPIENTS }}
+        run: |
+          python "send_open_orders_alert.py"
+
       - name: Commit updated data.xlsx
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.xlsx data-meta.json
+
           if git diff --cached --quiet; then
             echo "No changes to data.xlsx - nothing to commit (extract may have produced identical data, or failed before this point)."
-          else
-            git commit -m "Auto update Vinculum data"
-            git push
-            echo "Committed and pushed updated data.xlsx."
+            exit 0
           fi
+
+          git commit -m "Auto update Vinculum data"
+
+          # The push can be rejected if another run (a scheduled run and a
+          # manual run overlapping, for example) pushed to main first while
+          # this job was busy scraping Vinculum. That used to make the whole
+          # commit silently vanish - the extraction succeeded but the commit
+          # never landed, so data.xlsx (and "Last Sync") just stayed stale.
+          # Retry with a rebase onto the latest remote main a few times
+          # instead of failing outright.
+          max_attempts=5
+          attempt=1
+          until git push origin main; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "Push still failing after $max_attempts attempts - giving up."
+              exit 1
+            fi
+            echo "Push rejected (remote moved on) - fetching + rebasing, attempt $attempt/$max_attempts..."
+            git fetch origin main
+            git rebase origin/main
+            attempt=$((attempt + 1))
+          done
+
+          echo "Committed and pushed updated data.xlsx."
