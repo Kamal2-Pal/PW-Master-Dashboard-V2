@@ -28,9 +28,20 @@ import json
 import re
 import urllib.request
 import urllib.error
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 
 import openpyxl
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def now_ist():
+    """GitHub Actions runners run in UTC. The dashboard shows IST (browser's
+    local timezone), so without this conversion 'now' was 5.5 hours behind
+    real IST time - causing the email's 'As of ...' timestamp to be off by
+    exactly 5h30m from when it actually arrived, and making elapsed-hours
+    SLA calculations subtly wrong too."""
+    return datetime.now(timezone.utc).astimezone(IST).replace(tzinfo=None)
 
 ORDER_ID_FIELDS = ["Order No", "OrderNo", "Order Number", "Order_No", "Order_Number", "Order ID", "OrderID"]
 DATE_FIELDS = ["Order create date", "OrderDate", "Order_Date", "Date"]
@@ -136,13 +147,21 @@ def order_level(rows):
 def build_open_orders(rows):
     """Mirrors buildSlaRows(), filtered down to just the still-open buckets:
     Open <48H, At Risk, Open >48H."""
-    now = datetime.now()
+    now = now_ist()
     open_orders = []
+    skip_cancelled_closed = 0
+    skip_no_date = 0
+    skip_has_ship_date = 0
+    skip_shipped_status_no_date = 0
     for r in rows:
         od = parse_date(get(r, DATE_FIELDS))
         status = norm(get(r, ["Status"])).lower()
 
-        if status in ("cancelled", "closed") or not od:
+        if status in ("cancelled", "closed"):
+            skip_cancelled_closed += 1
+            continue
+        if not od:
+            skip_no_date += 1
             continue
 
         sd = parse_date(get(r, SHIP_DATE_FIELDS))
@@ -152,8 +171,10 @@ def build_open_orders(rows):
             sd = parse_date(get(r, MANIFEST_DATE_FIELDS))
 
         if sd:
+            skip_has_ship_date += 1
             continue  # already shipped (Within SLA or Breached) - not "open"
         if is_shipped_status:
+            skip_shipped_status_no_date += 1
             continue  # status says shipped but no date at all - treated as shipped, not open
 
         hours = (now - od).total_seconds() / 3600
@@ -172,6 +193,15 @@ def build_open_orders(rows):
             "sla": sla,
             "hours": hours,
         })
+
+    print(
+        f"[diagnostic] input orders: {len(rows)} | "
+        f"skipped(cancelled/closed): {skip_cancelled_closed} | "
+        f"skipped(no order-create-date): {skip_no_date} | "
+        f"skipped(has a ship date -> Within/Breached): {skip_has_ship_date} | "
+        f"skipped(shipped-status, no date at all): {skip_shipped_status_no_date} | "
+        f"-> open orders: {len(open_orders)}"
+    )
 
     open_orders.sort(key=lambda x: x["hours"], reverse=True)
     return open_orders
@@ -212,7 +242,7 @@ def build_email_html(open_orders, max_rows=300):
             f'(sorted by longest open first). Full list is on the dashboard.</p>'
         )
 
-    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    now_str = now_ist().strftime("%d %b %Y, %I:%M %p")
 
     return f"""
     <html><body style="font-family:Arial,sans-serif;color:#182230">
@@ -276,23 +306,30 @@ def send_email(html_body, subject):
 
 def main():
     current_rows = read_xlsx_best_sheet("data.xlsx") if os.path.exists("data.xlsx") else []
+    print(f"[diagnostic] data.xlsx rows read: {len(current_rows)}")
+    if current_rows:
+        print(f"[diagnostic] sample columns detected: {list(current_rows[0].keys())[:15]}")
 
     history_rows = []
     for path in sorted(glob.glob("history*.xlsx")):
-        history_rows.extend(read_xlsx_best_sheet(path))
+        this_file_rows = read_xlsx_best_sheet(path)
+        print(f"[diagnostic] {path} rows read: {len(this_file_rows)}")
+        history_rows.extend(this_file_rows)
 
     raw = merge_and_dedup(history_rows, current_rows)
+    print(f"[diagnostic] merged raw rows: {len(raw)}")
     if not raw:
         print("No data found in data.xlsx/history files - skipping email.")
         sys.exit(0)
 
     orders = order_level(raw)
+    print(f"[diagnostic] unique orders after order_level(): {len(orders)}")
     open_orders = build_open_orders(orders)
 
     html_body = build_email_html(open_orders)
     total = len(open_orders)
     over48 = sum(1 for o in open_orders if o["sla"] == "Open >48H")
-    subject = f"Open Orders Alert - {total} open ({over48} over 48H) - {datetime.now().strftime('%d %b %I:%M %p')}"
+    subject = f"Open Orders Alert - {total} open ({over48} over 48H) - {now_ist().strftime('%d %b %I:%M %p')}"
 
     send_email(html_body, subject)
 
