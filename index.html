@@ -223,6 +223,12 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   </section>
 
   <section class="zoho-section">
+    <div class="section-title">Missing Zoho DOC No. — Order-wise Detail</div>
+    <div class="note" id="zohoPendingDetailNote">Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date.</div>
+    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Status</th><th>Doc Type</th><th>Order Qty</th><th>Order Create Date</th></tr></thead><tbody id="zohoPendingDetailTbody"></tbody></table></div>
+  </section>
+
+  <section class="zoho-section">
     <div class="zoho-summary-head">
       <div>
         <div class="section-title">Month-wise Zoho DOC Summary</div>
@@ -951,6 +957,20 @@ function renderZohoDocs(){
   $("zohoDateTbody").innerHTML=groupSummary(dateRows,dateOf).map(([d,x])=>
     `<tr><td>${esc(d)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
   ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected date.</td></tr>`;
+
+  // Missing Zoho DOC No. — Order-wise Detail. Only populated when the user
+  // has actually picked a specific date (not for "All Dates"), per request:
+  // show individual pending orders for that date, not just the summary count.
+  if(dateFilter){
+    const pendingForDate=dateRows.filter(r=>!getDoc(r));
+    $("zohoPendingDetailNote").textContent=`Showing ${pendingForDate.length.toLocaleString()} order(s) missing Zoho DOC No. for ${dateFilter}.`;
+    $("zohoPendingDetailTbody").innerHTML=pendingForDate.map(r=>
+      `<tr><td>${esc(orderIdOf(r))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Status"]))}</td><td>${esc(getType(r))}</td><td>${num(get(r,["Order Qty","Qty"])).toLocaleString()}</td><td>${esc(dateOf(r))}</td></tr>`
+    ).join("") || `<tr><td colspan="6" class="muted">No missing DOC No. orders for ${esc(dateFilter)}.</td></tr>`;
+  } else {
+    $("zohoPendingDetailNote").textContent="Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date.";
+    $("zohoPendingDetailTbody").innerHTML="";
+  }
 
   $("zohoMonthTbody").innerHTML=groupSummary(monthRows,r=>dateOf(r).slice(0,7)).map(([m,x])=>
     `<tr><td>${esc(m)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
