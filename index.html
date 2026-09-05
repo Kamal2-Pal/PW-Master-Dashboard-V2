@@ -266,7 +266,6 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="note">Orders not yet shipped/cancelled — Open &lt;48H, At Risk and Open &gt;48H combined.</div>
     <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>SLA Status</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaTotalOpenTbody"></tbody></table></div>
   </section>
-  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks (Col B Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div></section>
 </section>
 </main>
@@ -847,25 +846,6 @@ function renderSla(rows){
       <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}','totalopen_')">Save</button></td>
     </tr>`;
   }).join("")||"<tr><td colspan=7>No open orders currently.</td></tr>";
-
-  // Open >48H Orders (Mapped from Column B).
-  // Only rows that are genuinely still open (no ship date on record yet) belong
-  // here - an order whose Status already says shipped/delivered and has a real
-  // Actual_ShipDate is "Breached", not "Open"; it's already covered in the
-  // "WH Remarks — Breached Orders" table above and should not also appear here.
-  const open=rows.filter(r=>r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));
-  $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
-    const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
-    const currentRemark=getEffectiveRemark(r, "open");
-    return `<tr>
-      <td>${esc(orderId)}</td>
-      <td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td>
-      <td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td>
-      <td>${r._hours?r._hours.toFixed(1):"0.0"}</td>
-      <td><input type="text" id="remark_input_${orderId}" class="remark-input" value="${esc(currentRemark)}" placeholder="Enter WH remark..."></td>
-      <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}')">Save</button></td>
-    </tr>`;
-  }).join("")||"<tr><td colspan=6>No orders currently open above 48 hours.</td></tr>";
 
   const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
   $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>WH Remark</th></tr>";
