@@ -423,6 +423,71 @@ let raw=[], current=[], orderRows=[];
 // full-dataset scan is what froze the tab / triggered "Page Unresponsive".
 // Now it's computed once per data load and cached here.
 function refreshOrderRows(){ orderRows = orderLevel(raw); }
+
+// ============================================================
+// PARSED-FILE CACHE (IndexedDB)
+// ============================================================
+// The dominant cost behind "1-2 minutes to load" is NOT the network download
+// - it's re-parsing large xlsx files with SheetJS on every single visit
+// (history.xlsx alone can be 20MB+ with tens of thousands of rows). History
+// files almost never change between visits, so this caches the ALREADY-
+// PARSED row objects in IndexedDB, keyed by the file's ETag/Last-Modified.
+// A repeat visit where the file is unchanged skips parsing entirely and
+// loads straight from this cache - the same way a normal website feels
+// instant on a second visit instead of re-downloading everything.
+const CACHE_DB_NAME="dashboard-file-cache", CACHE_STORE="parsed-rows";
+
+function openCacheDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(CACHE_DB_NAME,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(CACHE_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+async function getCachedRows(fileName,versionKey){
+  try{
+    const db=await openCacheDb();
+    return await new Promise(resolve=>{
+      const tx=db.transaction(CACHE_STORE,"readonly");
+      const req=tx.objectStore(CACHE_STORE).get(fileName);
+      req.onsuccess=()=>{
+        const entry=req.result;
+        resolve(entry && entry.versionKey===versionKey ? entry.rows : null);
+      };
+      req.onerror=()=>resolve(null);
+    });
+  }catch(err){ return null; }
+}
+
+async function setCachedRows(fileName,versionKey,rows){
+  try{
+    const db=await openCacheDb();
+    const tx=db.transaction(CACHE_STORE,"readwrite");
+    tx.objectStore(CACHE_STORE).put({versionKey,rows},fileName);
+  }catch(err){ /* best-effort cache - never block on failure */ }
+}
+
+// Fetches a file (with normal HTTP conditional caching, no cache-busting -
+// that alone was defeating any caching before, since every request had a
+// unique ?ts= URL) and skips SheetJS parsing entirely if we already have
+// this exact version's rows cached.
+async function fetchAndParseWithCache(fileName){
+  const res=await fetch(fileName,{cache:"no-cache"});
+  if(!res.ok) return null;
+  const versionKey=res.headers.get("etag")||res.headers.get("last-modified")||"";
+  if(versionKey){
+    const cached=await getCachedRows(fileName,versionKey);
+    if(cached){
+      console.log(`[cache] ${fileName}: reused cached parse (${cached.length.toLocaleString()} rows, no re-parsing needed)`);
+      return cached;
+    }
+  }
+  const rows=parseWorkbookBuffer(await res.arrayBuffer());
+  if(versionKey) setCachedRows(fileName,versionKey,rows);
+  return rows;
+}
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm=v=>String(v??"").trim();
@@ -1071,10 +1136,7 @@ async function loadAllExcelData(){
   await fetchGoogleSheetData();
 
   try {
-    const resCurrent = await fetch("data.xlsx?ts=" + Date.now(), { cache: "no-store" });
-    if (resCurrent.ok) {
-      currentMonthData = parseWorkbookBuffer(await resCurrent.arrayBuffer());
-    }
+    currentMonthData = await fetchAndParseWithCache("data.xlsx") || [];
   } catch (err) {
     console.warn("data.xlsx fetch failed", err);
   }
@@ -1086,15 +1148,20 @@ async function loadAllExcelData(){
   // history-2.xlsx... and stop at the first one that's missing - so simply
   // adding a new history-N.xlsx file to the repo (named sequentially, no
   // gaps) is picked up automatically with no code change needed here.
+  //
+  // Note: no "?ts=" cache-busting here (unlike data.xlsx above) - history
+  // files rarely change, so we WANT the browser + our own IndexedDB cache
+  // (see fetchAndParseWithCache) to be able to recognize "this is the same
+  // file as last time" and skip re-downloading/re-parsing it.
   const HISTORY_FILE_SCAN_LIMIT = 20; // safety cap - raise if you ever need more parts
   const historyFileNames = ["history.xlsx"];
   for (let i = 1; i <= HISTORY_FILE_SCAN_LIMIT; i++) historyFileNames.push(`history-${i}.xlsx`);
 
   for (const fileName of historyFileNames) {
     try {
-      const res = await fetch(`${fileName}?ts=` + Date.now(), { cache: "no-store" });
-      if (res.ok) {
-        historyData = historyData.concat(parseWorkbookBuffer(await res.arrayBuffer()));
+      const rows = await fetchAndParseWithCache(fileName);
+      if (rows) {
+        historyData = historyData.concat(rows);
       } else if (fileName !== "history.xlsx") {
         break; // sequential numbering broke - assume no more parts beyond this
       }
