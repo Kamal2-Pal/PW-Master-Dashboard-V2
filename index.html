@@ -212,7 +212,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="zoho-summary-head">
       <div>
         <div class="section-title">Date-wise Zoho DOC Summary</div>
-        <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No. Use Date and Month filters to narrow the summary.</div>
+        <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No. Use Date Filter or Month Filter.</div>
       </div>
       <div class="zoho-filter">
         <div class="field">Date Filter<select id="zohoDateFilter"><option value="">All Dates</option></select></div>
@@ -957,13 +957,54 @@ function renderZohoDocs(){
   const docOf = r => norm(get(r,["Zoho_DOCNo","Zoho DOCNo","Zoho_DocNo","Zoho DOC No","Zoho Doc No"]));
   const dateOf = r => dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
 
-  populateZohoSummaryFilters(requiredRows);
-
-  // Apply the user's existing/global filters to the KPI/detail base,
-  // while keeping the new Date and Month filters independent for their
-  // respective summary tables.
-  const dateFilter=$("zohoDateFilter")?.value||"";
+  // Read the currently selected filters before rebuilding the Date Filter.
+  // The Month Filter controls which dates are available in the Date Filter
+  // and which dates are shown in the Date-wise summary.
+  let dateFilter=$("zohoDateFilter")?.value||"";
   const monthFilter=$("zohoMonthFilter")?.value||"";
+
+  // When a month is selected, only dates belonging to that month are offered
+  // in the Date Filter. If a previously selected date is outside that month,
+  // clear the date selection automatically.
+  const monthScopedForDateFilter = monthFilter
+    ? requiredRows.filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7)===monthFilter)
+    : requiredRows;
+
+  const scopedDates = unique(
+    monthScopedForDateFilter.map(r=>
+      dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))
+    )
+  );
+
+  const dateEl=$("zohoDateFilter");
+  if(dateEl){
+    if(dateFilter && !scopedDates.includes(dateFilter)){
+      dateFilter="";
+    }
+    dateEl.innerHTML =
+      '<option value="">All Dates</option>' +
+      scopedDates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
+    dateEl.value=dateFilter;
+  }
+
+  // Keep the Month Filter options complete, regardless of the current
+  // selection, so the user can switch from one month to another.
+  const monthEl=$("zohoMonthFilter");
+  if(monthEl){
+    const allDates=unique(
+      requiredRows.map(r=>
+        dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))
+      )
+    );
+    const allMonths=unique(
+      allDates.map(d=>d.slice(0,7)).filter(Boolean)
+    );
+    const currentMonth=monthFilter;
+    monthEl.innerHTML =
+      '<option value="">All Months</option>' +
+      allMonths.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
+    if(allMonths.includes(currentMonth)) monthEl.value=currentMonth;
+  }
 
   // Deduplicate by Order No so multi-line orders do not inflate the KPIs.
   const requiredByOrder = new Map();
@@ -1008,12 +1049,18 @@ function renderZohoDocs(){
     return [...m.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
   }
 
-  const dateRows = requiredOrders.filter(r=>{
-    const d = dateOf(r);
-    if(monthFilter && d.slice(0,7)!==monthFilter) return false;
-    if(dateFilter && d!==dateFilter) return false;
-    return true;
-  });
+  // Date-wise summary: Month Filter first narrows the date list, and Date Filter
+  // then narrows to a single date when selected. If both are selected, the
+  // selected date naturally stays within the selected month.
+  const monthScopedRows = monthFilter
+    ? requiredOrders.filter(r=>dateOf(r).slice(0,7)===monthFilter)
+    : requiredOrders;
+  const dateRows = dateFilter
+    ? monthScopedRows.filter(r=>dateOf(r)===dateFilter)
+    : monthScopedRows;
+
+  // Month-wise summary remains a complete month-level view. The Month Filter
+  // is intentionally located with the Date-wise summary as requested.
   const monthRows = requiredOrders;
 
   $("zohoDateTbody").innerHTML=groupSummary(dateRows,dateOf).map(([d,x])=>
@@ -1030,7 +1077,7 @@ function renderZohoDocs(){
       `<tr><td>${esc(orderIdOf(r))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Status"]))}</td><td>${esc(getType(r))}</td><td>${num(get(r,["Order Qty","Qty"])).toLocaleString()}</td><td>${esc(dateOf(r))}</td></tr>`
     ).join("") || `<tr><td colspan="6" class="muted">No missing DOC No. orders for ${esc(dateFilter)}.</td></tr>`;
   } else {
-    $("zohoPendingDetailNote").textContent="Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date. Month Filter can be used to narrow the date list.";
+    $("zohoPendingDetailNote").textContent="Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date.";
     $("zohoPendingDetailTbody").innerHTML="";
   }
 
