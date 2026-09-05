@@ -25,9 +25,10 @@ import os
 import sys
 import glob
 import json
+import re
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, date
 
 import openpyxl
 
@@ -60,13 +61,32 @@ def parse_date(v):
         return None
     if isinstance(v, datetime):
         return v
+    if isinstance(v, date):
+        return datetime(v.year, v.month, v.day)
     s = str(v).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y", "%d/%m/%Y"):
+    # Match a YYYY-MM-DD (or YYYY/MM/DD) prefix and ignore anything after it
+    # (time, fractional seconds like ".0", etc.) - mirrors the dashboard's
+    # dateVal() regex approach, which is what was missing here. The old
+    # exact-format strptime() list failed on real export values like
+    # "2026-09-01 07:50:17.0" (trailing ".0"), silently turning every row's
+    # date into None - which made every order get skipped and produced the
+    # "0 open orders" bug.
+    m = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+    if m:
         try:
-            return datetime.strptime(s, fmt)
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
-            continue
-    return None
+            pass
+    m = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})", s)
+    if m:
+        try:
+            return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
 
 
 def order_id_of(row):
