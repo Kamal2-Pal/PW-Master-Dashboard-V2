@@ -104,10 +104,7 @@ def order_id_of(row):
     return norm(get(row, ORDER_ID_FIELDS))
 
 
-def read_xlsx_best_sheet(path):
-    """Same idea as the dashboard's parseWorkbookBuffer(): pick whichever
-    sheet in the workbook has the most data rows."""
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+def _extract_rows(wb):
     best_rows = []
     for ws in wb.worksheets:
         rows_iter = ws.iter_rows(values_only=True)
@@ -123,6 +120,29 @@ def read_xlsx_best_sheet(path):
         if len(sheet_rows) > len(best_rows):
             best_rows = sheet_rows
     return best_rows
+
+
+def read_xlsx_best_sheet(path):
+    """Same idea as the dashboard's parseWorkbookBuffer(): pick whichever
+    sheet in the workbook has the most data rows."""
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    rows = _extract_rows(wb)
+    wb.close()
+
+    if not rows and os.path.getsize(path) > 0:
+        # read_only mode trusts the workbook's cached <dimension> tag to know
+        # how many rows to iterate. Files exported by non-Excel tools (like
+        # this one, downloaded via Selenium from Vinculum's web report) can
+        # have a stale/missing dimension tag, which makes read_only mode
+        # silently yield zero rows even though the file genuinely has data.
+        # Falling back to a full (non-read-only) parse reads actual cell
+        # data directly instead of trusting that metadata, and fixes it.
+        print(f"[diagnostic] {path}: read_only pass found 0 rows despite a non-empty file - retrying with a full parse")
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=False)
+        rows = _extract_rows(wb)
+        wb.close()
+
+    return rows
 
 
 def merge_and_dedup(history_rows, current_rows):
