@@ -212,11 +212,13 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="zoho-summary-head">
       <div>
         <div class="section-title">Date-wise Zoho DOC Summary</div>
-        <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
+        <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No. Use Date and Month filters to narrow the summary.</div>
       </div>
       <div class="zoho-filter">
         <div class="field">Date Filter<select id="zohoDateFilter"><option value="">All Dates</option></select></div>
-        <button onclick="clearZohoDateFilter()">Clear</button>
+        <div class="field">Month Filter<select id="zohoMonthFilter"><option value="">All Months</option></select></div>
+        <button onclick="clearZohoDateFilter()">Clear Date</button>
+        <button onclick="clearZohoMonthFilter()">Clear Month</button>
       </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoDateTbody"></tbody></table></div>
@@ -234,18 +236,8 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
         <div class="section-title">Month-wise Zoho DOC Summary</div>
         <div class="note">Order create month wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
       </div>
-      <div class="zoho-filter">
-        <div class="field">Month Filter<select id="zohoMonthFilter"><option value="">All Months</option></select></div>
-        <button onclick="clearZohoMonthFilter()">Clear</button>
-      </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Month</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoMonthTbody"></tbody></table></div>
-  </section>
-
-  <section class="table-card">
-    <div class="section-title">Zoho DOC No. Details</div>
-    <div class="note">Only required document types (TI/BOS) are shown.</div>
-    <div class="table-wrap"><table><thead><tr><th>Zoho DOC No.</th><th>Doc Type</th><th>Unique Orders</th><th>Order Qty</th><th>Order Create Date</th></tr></thead><tbody id="zohoDetailTbody"></tbody></table></div>
   </section>
 </section>
 
@@ -1016,8 +1008,13 @@ function renderZohoDocs(){
     return [...m.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
   }
 
-  const dateRows = dateFilter ? requiredOrders.filter(r=>dateOf(r)===dateFilter) : requiredOrders;
-  const monthRows = monthFilter ? requiredOrders.filter(r=>dateOf(r).slice(0,7)===monthFilter) : requiredOrders;
+  const dateRows = requiredOrders.filter(r=>{
+    const d = dateOf(r);
+    if(monthFilter && d.slice(0,7)!==monthFilter) return false;
+    if(dateFilter && d!==dateFilter) return false;
+    return true;
+  });
+  const monthRows = requiredOrders;
 
   $("zohoDateTbody").innerHTML=groupSummary(dateRows,dateOf).map(([d,x])=>
     `<tr><td>${esc(d)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
@@ -1033,7 +1030,7 @@ function renderZohoDocs(){
       `<tr><td>${esc(orderIdOf(r))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Status"]))}</td><td>${esc(getType(r))}</td><td>${num(get(r,["Order Qty","Qty"])).toLocaleString()}</td><td>${esc(dateOf(r))}</td></tr>`
     ).join("") || `<tr><td colspan="6" class="muted">No missing DOC No. orders for ${esc(dateFilter)}.</td></tr>`;
   } else {
-    $("zohoPendingDetailNote").textContent="Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date.";
+    $("zohoPendingDetailNote").textContent="Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date. Month Filter can be used to narrow the date list.";
     $("zohoPendingDetailTbody").innerHTML="";
   }
 
@@ -1041,20 +1038,7 @@ function renderZohoDocs(){
     `<tr><td>${esc(m)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
   ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected month.</td></tr>`;
 
-  const detailMap=new Map();
-  requiredOrders.forEach(r=>{
-    const doc=getDoc(r);
-    if(!doc) return;
-    if(!detailMap.has(doc)) detailMap.set(doc,{type:getType(r),orders:new Set(),qty:0,date:dateOf(r)});
-    const x=detailMap.get(doc),id=orderIdOf(r);
-    if(id) x.orders.add(id);
-    x.qty+=num(get(r,["Order Qty","Qty"]));
-    const d=dateOf(r);
-    if(d && (!x.date || d<x.date)) x.date=d;
-  });
-  $("zohoDetailTbody").innerHTML=[...detailMap.entries()].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true})).map(([doc,x])=>
-    `<tr><td><b>${esc(doc)}</b></td><td>${esc(x.type)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${esc(x.date)}</td></tr>`
-  ).join("") || `<tr><td colspan="5" class="muted">No Zoho DOC No. found for TI/BOS.</td></tr>`;
+
 }
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();refreshActiveTabIfNeeded();}
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();slaDirty=false;}
