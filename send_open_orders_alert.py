@@ -310,7 +310,7 @@ def build_email_html(open_orders, max_rows=300):
       <p>Hi Team,</p>
       <p>Please find attached the details of the below-mentioned open orders.</p>
       <p style="color:#555">
-        <b>Note:</b> For orders that have been pending for a long time, kindly share the
+        <b>Note:</b> For orders that have been pending for more than 48 hours, kindly share the
         relevant remarks/reasons so that we can update the same in the dashboard accordingly.
       </p>
       <h2 style="margin-bottom:4px">Open Orders Summary</h2>
