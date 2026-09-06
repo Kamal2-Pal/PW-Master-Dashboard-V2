@@ -31,8 +31,46 @@ import urllib.error
 from datetime import datetime, date, timedelta, timezone
 
 import openpyxl
+import csv
+import io
+
+# Same published Google Sheet CSV link already used by the dashboard's own
+# client-side index.html for WH remarks (Column A = Order No, Column B =
+# Open Order remarks, Column C = TAT Breach remarks). Supabase isn't
+# actually used for remarks in practice, so we read from the same source
+# the dashboard really relies on instead.
+GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1PokS-kQwkGTVsLLFCOz84P0okZWHoQQslZMabzSoKpE/export?format=csv&gid=1507121858"
 
 IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def fetch_google_sheet_remarks():
+    """Fetches order_id -> Open Order remark from the Google Sheet, by
+    column POSITION (not header keyword matching - the dashboard's own
+    fetchGoogleSheetData() switched to this because "Open Order remarks"
+    itself contains the word "order", which previously caused it to be
+    mistaken for the Order No column)."""
+    url = GOOGLE_SHEET_CSV_URL + ("&" if "?" in GOOGLE_SHEET_CSV_URL else "?") + f"t={int(datetime.now().timestamp())}"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req) as resp:
+            csv_text = resp.read().decode("utf-8")
+        reader = csv.reader(io.StringIO(csv_text))
+        rows = list(reader)
+        if not rows:
+            return {}
+        remarks = {}
+        for row in rows[1:]:  # skip header row
+            if len(row) < 2:
+                continue
+            order_id = norm(row[0])
+            open_remark = norm(row[1]) if len(row) > 1 else ""
+            if order_id and open_remark:
+                remarks[order_id] = open_remark
+        return remarks
+    except Exception as err:
+        print(f"[diagnostic] Google Sheet remarks fetch failed (remarks column will be blank): {err}")
+        return {}
 
 
 def now_ist():
@@ -164,9 +202,10 @@ def order_level(rows):
     return list(seen.values())
 
 
-def build_open_orders(rows):
+def build_open_orders(rows, remarks_map=None):
     """Mirrors buildSlaRows(), filtered down to just the still-open buckets:
     Open <48H, At Risk, Open >48H."""
+    remarks_map = remarks_map or {}
     now = now_ist()
     open_orders = []
     skip_cancelled_closed = 0
@@ -212,6 +251,7 @@ def build_open_orders(rows):
             "order_create_date": od,
             "sla": sla,
             "hours": hours,
+            "remark": remarks_map.get(order_id_of(r), ""),
         })
 
     print(
@@ -252,6 +292,7 @@ def build_email_html(open_orders, max_rows=300):
             f'<td style="padding:6px 10px;border:1px solid #eee">{date_str}</td>'
             f'<td style="padding:6px 10px;border:1px solid #eee;color:{color};font-weight:600">{o["sla"]}</td>'
             f'<td style="padding:6px 10px;border:1px solid #eee;text-align:right">{o["hours"]:.1f}</td>'
+            f'<td style="padding:6px 10px;border:1px solid #eee">{o["remark"]}</td>'
             f'</tr>'
         )
 
@@ -286,6 +327,7 @@ def build_email_html(open_orders, max_rows=300):
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">Order Create Date</th>
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">SLA Status</th>
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:right">Open Hours</th>
+            <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">Remarks</th>
           </tr>
         </thead>
         <tbody>{rows_html}</tbody>
@@ -350,7 +392,11 @@ def main():
 
     orders = order_level(raw)
     print(f"[diagnostic] unique orders after order_level(): {len(orders)}")
-    open_orders = build_open_orders(orders)
+
+    remarks_map = fetch_google_sheet_remarks()
+    print(f"[diagnostic] Google Sheet remarks fetched: {len(remarks_map)}")
+
+    open_orders = build_open_orders(orders, remarks_map)
 
     html_body = build_email_html(open_orders)
     total = len(open_orders)
