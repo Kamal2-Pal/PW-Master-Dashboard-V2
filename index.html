@@ -1210,6 +1210,7 @@ async function fetchGitHubCommitTime() {
     if (res.ok) {
       const meta = await res.json();
       if (meta && meta.generatedAt) {
+        window.__lastKnownGeneratedAt = meta.generatedAt;
         const syncDate = new Date(meta.generatedAt).toLocaleString('en-IN', {
           day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
         });
@@ -1222,6 +1223,29 @@ async function fetchGitHubCommitTime() {
   }
   $("sourceText").textContent = `LIVE Orders (data.xlsx + history files) • ${raw.length.toLocaleString()} total orders`;
 }
+
+// ============================================================
+// AUTO HARD-REFRESH ON NEW DATA
+// ============================================================
+// Vinculum Auto Extract runs every 2 hours, but a browser tab left open
+// won't pick that up on its own - the page only loads data once, on open.
+// This periodically checks data-meta.json (a tiny file, cheap to poll) and
+// force-reloads the whole page the moment a newer sync is detected, so
+// anyone with the dashboard open always ends up looking at current data.
+async function checkForNewData(){
+  try {
+    const res = await fetch(`data-meta.json?ts=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const meta = await res.json();
+    if (meta && meta.generatedAt && window.__lastKnownGeneratedAt && meta.generatedAt !== window.__lastKnownGeneratedAt) {
+      location.reload();
+    }
+  } catch (err) {
+    console.warn("checkForNewData failed", err);
+  }
+}
+
+setInterval(checkForNewData, 30 * 60 * 1000); // check every 30 minutes
 
 // Live Google Sheet Refresh Interval (Every 30 Seconds)
 setInterval(() => {
