@@ -153,6 +153,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <button class="tab active" data-tab="ordersTab">Order Fulfillment</button>
   <button class="tab" data-tab="zohoTab">Zoho Docs</button>
   <button class="tab" data-tab="slaTab">48H Ship SLA</button>
+  <button class="tab" data-tab="b2bTab">B2B_Reports</button>
 </div>
 
 <main class="wrap">
@@ -273,6 +274,35 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>SLA Status</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaTotalOpenTbody"></tbody></table></div>
   </section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div></section>
+</section>
+
+<section id="b2bTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>B2B Reports</h2>
+      <div class="note">Shipped-order summary by Finance Category &amp; Transporter for a chosen Ship Date, plus a running Pending Orders summary by Finance Category.</div>
+    </div>
+  </div>
+
+  <section class="zoho-section">
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">Shipped Summary — By Finance Category &amp; Transporter</div>
+        <div class="note">Filtered by Actual_ShipDate. Defaults to today.</div>
+      </div>
+      <div class="zoho-filter">
+        <div class="field">Ship Date<input id="b2bShipDateFilter" type="date"></div>
+        <button onclick="clearB2BDateFilter()">Today</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Transporter</th><th>Distinct Order Count</th><th>Sum of Shipped Qty</th></tr></thead><tbody id="b2bShippedTbody"></tbody></table></div>
+  </section>
+
+  <section class="zoho-section">
+    <div class="section-title">Pending Orders Summary — By Finance Category</div>
+    <div class="note">Orders not yet shipped (current snapshot, not tied to the Ship Date filter above).</div>
+    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Count of Order No</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
+  </section>
 </section>
 </main>
 
@@ -827,13 +857,15 @@ const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivere
 // one being shown, and cache the result (slaDirty/zohoDirty) so re-switching
 // back to an already-fresh tab is instant instead of recomputing again.
 let slaBaseRows=[];
-let slaDirty=true, zohoDirty=true;
-function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; }
+let slaDirty=true, zohoDirty=true, b2bDirty=true;
+function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; b2bDirty=true; }
 function refreshActiveTabIfNeeded(){
   if($("slaTab").classList.contains("active-panel")){
     if(slaDirty){ initSlaFilters(); applySlaFilters(); slaDirty=false; }
   } else if($("zohoTab").classList.contains("active-panel")){
     if(zohoDirty){ renderZohoDocs(); zohoDirty=false; }
+  } else if($("b2bTab").classList.contains("active-panel")){
+    if(b2bDirty){ renderB2BReports(); b2bDirty=false; }
   }
 }
 
@@ -969,6 +1001,66 @@ function clearZohoMonthFilter(){
   renderZohoDocs();
 }
 
+function todayDateKey(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function clearB2BDateFilter(){
+  $("b2bShipDateFilter").value=todayDateKey();
+  renderB2BReports();
+}
+
+function renderB2BReports(){
+  if(!$("b2bShipDateFilter").value) $("b2bShipDateFilter").value=todayDateKey();
+  const shipDateFilter=$("b2bShipDateFilter").value;
+
+  // --- Shipped Summary: By Finance Category & Transporter, for the chosen Ship Date ---
+  const shippedOnDate=orderRows.filter(r=>dateKey(get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]))===shipDateFilter);
+  const shippedGroups=new Map(); // key: "financeCategory||transporter"
+  shippedOnDate.forEach(r=>{
+    const fc=norm(get(r,["finance_category","Finance Category","Category"]))||"(Blank)";
+    const tr=norm(get(r,["Transporter","Transporter Name","Courier","Courier Name"]))||"(Blank)";
+    const key=fc+"||"+tr;
+    if(!shippedGroups.has(key)) shippedGroups.set(key,{fc,tr,orders:new Set(),qty:0});
+    const g=shippedGroups.get(key);
+    const id=norm(get(r,["Order No","OrderNo","Order Number","Order ID"]));
+    if(id) g.orders.add(id);
+    g.qty+=num(get(r,["Shipped Qty"]));
+  });
+  const shippedRows=[...shippedGroups.values()].sort((a,b)=>a.fc.localeCompare(b.fc)||a.tr.localeCompare(b.tr));
+  const shippedTotalOrders=shippedRows.reduce((s,g)=>s+g.orders.size,0);
+  const shippedTotalQty=shippedRows.reduce((s,g)=>s+g.qty,0);
+  $("b2bShippedTbody").innerHTML=(
+    shippedRows.map(g=>`<tr><td>${esc(g.fc)}</td><td>${esc(g.tr)}</td><td>${g.orders.size.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="muted">No orders shipped on ${esc(shipDateFilter)}.</td></tr>`
+  ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total</td><td>${shippedTotalOrders.toLocaleString()}</td><td>${shippedTotalQty.toLocaleString()}</td></tr>`;
+
+  // --- Pending Orders Summary: By Finance Category (current snapshot, not date-filtered) ---
+  const pendingRows=orderRows.filter(r=>{
+    const status=norm(get(r,["Status"])).toLowerCase();
+    if(status==="cancelled"||status==="closed") return false;
+    if(SHIPPED_STATUSES.has(status)) return false;
+    const sd=get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]);
+    return !norm(sd); // no ship date recorded yet = still pending
+  });
+  const pendingGroups=new Map();
+  pendingRows.forEach(r=>{
+    const fc=norm(get(r,["finance_category","Finance Category","Category"]))||"(Blank)";
+    if(!pendingGroups.has(fc)) pendingGroups.set(fc,{count:0,qty:0});
+    const g=pendingGroups.get(fc);
+    g.count+=1;
+    g.qty+=num(get(r,["Commited Qty","Committed Qty","Commit Qty","Open Qty"]));
+  });
+  const pendingList=[...pendingGroups.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+  const pendingTotalCount=pendingList.reduce((s,[,g])=>s+g.count,0);
+  const pendingTotalQty=pendingList.reduce((s,[,g])=>s+g.qty,0);
+  $("b2bPendingTbody").innerHTML=(
+    pendingList.map(([fc,g])=>`<tr><td>${esc(fc)}</td><td>${g.count.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="muted">No pending orders currently.</td></tr>`
+  ) + `<tr style="font-weight:800;background:#f7f9fb"><td>Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
+}
+
 function renderZohoDocs(){
   const source = current && current.length ? current : orderRows;
   const requiredRows = source.filter(r=>{
@@ -1079,12 +1171,13 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
   document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
   btn.classList.add("active");
   $(btn.dataset.tab).classList.add("active-panel");
-  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"){refreshActiveTabIfNeeded()}
+  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"||btn.dataset.tab==="b2bTab"){refreshActiveTabIfNeeded()}
 }));
 
 ["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("zohoDateFilter").addEventListener("change",renderZohoDocs);
+$("b2bShipDateFilter").addEventListener("change",renderB2BReports);
 $("zohoMonthFilter").addEventListener("change",renderZohoDocs);
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
 
