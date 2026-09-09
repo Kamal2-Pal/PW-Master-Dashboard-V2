@@ -113,23 +113,26 @@ def parse_date(v):
     if isinstance(v, date):
         return datetime(v.year, v.month, v.day)
     s = str(v).strip()
-    # Match a YYYY-MM-DD (or YYYY/MM/DD) prefix and ignore anything after it
-    # (time, fractional seconds like ".0", etc.) - mirrors the dashboard's
-    # dateVal() regex approach, which is what was missing here. The old
-    # exact-format strptime() list failed on real export values like
-    # "2026-09-01 07:50:17.0" (trailing ".0"), silently turning every row's
-    # date into None - which made every order get skipped and produced the
-    # "0 open orders" bug.
-    m = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+    # Match a YYYY-MM-DD (or YYYY/MM/DD) prefix, with an optional time-of-day
+    # (HH:MM[:SS]) captured too - mirrors the dashboard's dateVal(). Ignores
+    # anything after that (like trailing ".0" fractional seconds). Previously
+    # this only captured the date and discarded the time entirely, treating
+    # every order as if created at midnight - which overestimated "Open
+    # Hours" for any order actually created later in the day.
+    m = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", s)
     if m:
         try:
-            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            h, mi, se = int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0)
+            return datetime(y, mo, d, h, mi, se)
         except ValueError:
             pass
-    m = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})", s)
+    m = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?", s)
     if m:
         try:
-            return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            h, mi, se = int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0)
+            return datetime(y, mo, d, h, mi, se)
         except ValueError:
             pass
     try:
