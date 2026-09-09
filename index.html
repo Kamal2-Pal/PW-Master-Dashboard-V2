@@ -301,7 +301,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <section class="zoho-section">
     <div class="section-title">Pending Orders Summary — By Finance Category</div>
     <div class="note">Orders not yet shipped (current snapshot, not tied to the Ship Date filter above).</div>
-    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Count of Order No</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Count of Order No</th><th>Sum of Order Qty</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
   </section>
 </section>
 </main>
@@ -1047,18 +1047,20 @@ function renderB2BReports(){
   const pendingGroups=new Map();
   pendingRows.forEach(r=>{
     const fc=norm(get(r,["finance_category","Finance Category","Category"]))||"(Blank)";
-    if(!pendingGroups.has(fc)) pendingGroups.set(fc,{count:0,qty:0});
+    if(!pendingGroups.has(fc)) pendingGroups.set(fc,{count:0,orderQty:0,qty:0});
     const g=pendingGroups.get(fc);
     g.count+=1;
+    g.orderQty+=num(get(r,["Order Qty","Qty"]));
     g.qty+=num(get(r,["Commited Qty","Committed Qty","Commit Qty","Open Qty"]));
   });
   const pendingList=[...pendingGroups.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
   const pendingTotalCount=pendingList.reduce((s,[,g])=>s+g.count,0);
+  const pendingTotalOrderQty=pendingList.reduce((s,[,g])=>s+g.orderQty,0);
   const pendingTotalQty=pendingList.reduce((s,[,g])=>s+g.qty,0);
   $("b2bPendingTbody").innerHTML=(
-    pendingList.map(([fc,g])=>`<tr><td>${esc(fc)}</td><td>${g.count.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
-    || `<tr><td colspan="3" class="muted">No pending orders currently.</td></tr>`
-  ) + `<tr style="font-weight:800;background:#f7f9fb"><td>Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
+    pendingList.map(([fc,g])=>`<tr><td>${esc(fc)}</td><td>${g.count.toLocaleString()}</td><td>${g.orderQty.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="muted">No pending orders currently.</td></tr>`
+  ) + `<tr style="font-weight:800;background:#f7f9fb"><td>Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
 }
 
 function renderZohoDocs(){
