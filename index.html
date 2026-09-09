@@ -66,7 +66,7 @@ th,td{padding:8px;border-bottom:1px solid #edf0f3;text-align:left;white-space:no
 th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}.risk{color:#a46d00;font-weight:800}.muted{color:#788594}
 .ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card h3{font-size:13px;margin:0 0 7px}.ops-card .big{font-size:24px;font-weight:800}
-.zoho-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.zoho-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
 .zoho-card{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px}
 .zoho-card h3{font-size:13px;margin:0 0 7px}
 .zoho-card .big{font-size:26px;font-weight:800}
@@ -216,6 +216,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
         <div class="note">Order create date wise — Required Orders, Zoho DOC No. Available and Missing DOC No.</div>
       </div>
       <div class="zoho-filter">
+        <div class="field">Month<select id="zohoDateSectionMonthFilter"><option value="">All Months</option></select></div>
         <div class="field">Date Filter<select id="zohoDateFilter"><option value="">All Dates</option></select></div>
         <button onclick="clearZohoDateFilter()">Clear</button>
       </div>
@@ -226,7 +227,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <section class="zoho-section">
     <div class="section-title">Missing Zoho DOC No. — Order-wise Detail</div>
     <div class="note" id="zohoPendingDetailNote">Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date.</div>
-    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Status</th><th>Doc Type</th><th>Order Qty</th><th>Order Create Date</th></tr></thead><tbody id="zohoPendingDetailTbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Finance Category</th><th>Status</th><th>Doc Type</th><th>Order Qty</th><th>Order Create Date</th></tr></thead><tbody id="zohoPendingDetailTbody"></tbody></table></div>
   </section>
 
   <section class="zoho-section">
@@ -241,12 +242,6 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
       </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Month</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoMonthTbody"></tbody></table></div>
-  </section>
-
-  <section class="table-card">
-    <div class="section-title">Zoho DOC No. Details</div>
-    <div class="note">Only required document types (TI/BOS) are shown.</div>
-    <div class="table-wrap"><table><thead><tr><th>Zoho DOC No.</th><th>Doc Type</th><th>Unique Orders</th><th>Order Qty</th><th>Order Create Date</th></tr></thead><tbody id="zohoDetailTbody"></tbody></table></div>
   </section>
 </section>
 
@@ -295,13 +290,13 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
         <button onclick="clearB2BDateFilter()">Today</button>
       </div>
     </div>
-    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Transporter</th><th>Distinct Order Count</th><th>Sum of Shipped Qty</th></tr></thead><tbody id="b2bShippedTbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Warehouse</th><th>Transporter</th><th>Distinct Order Count</th><th>Sum of Shipped Qty</th></tr></thead><tbody id="b2bShippedTbody"></tbody></table></div>
   </section>
 
   <section class="zoho-section">
     <div class="section-title">Pending Orders Summary — By Finance Category</div>
     <div class="note">Orders not yet shipped (current snapshot, not tied to the Ship Date filter above).</div>
-    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Count of Order No</th><th>Sum of Order Qty</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Warehouse</th><th>Count of Order No</th><th>Sum of Order Qty</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
   </section>
 </section>
 </main>
@@ -976,10 +971,20 @@ function renderSla(rows){
 }
 
 function populateZohoSummaryFilters(requiredRows){
-  const dateEl=$("zohoDateFilter"), monthEl=$("zohoMonthFilter");
-  const oldDate=dateEl?.value||"", oldMonth=monthEl?.value||"";
-  const dates=unique(requiredRows.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))));
-  const months=unique(dates.map(d=>d.slice(0,7)).filter(Boolean));
+  const dateEl=$("zohoDateFilter"), monthEl=$("zohoMonthFilter"), dateMonthEl=$("zohoDateSectionMonthFilter");
+  const oldDate=dateEl?.value||"", oldMonth=monthEl?.value||"", oldDateMonth=dateMonthEl?.value||"";
+  const allDates=unique(requiredRows.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))));
+  const months=unique(allDates.map(d=>d.slice(0,7)).filter(Boolean));
+
+  // The Month dropdown next to Date Filter narrows which dates show up in
+  // Date Filter, so picking a month first makes finding a specific date
+  // within it much faster instead of scrolling a full list of every date.
+  if(dateMonthEl){
+    dateMonthEl.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
+    if(months.includes(oldDateMonth)) dateMonthEl.value=oldDateMonth;
+  }
+  const dateMonthFilter=dateMonthEl?.value||"";
+  const dates=dateMonthFilter ? allDates.filter(d=>d.startsWith(dateMonthFilter)) : allDates;
 
   if(dateEl){
     dateEl.innerHTML='<option value="">All Dates</option>'+dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
@@ -993,6 +998,7 @@ function populateZohoSummaryFilters(requiredRows){
 
 function clearZohoDateFilter(){
   if($("zohoDateFilter")) $("zohoDateFilter").value="";
+  if($("zohoDateSectionMonthFilter")) $("zohoDateSectionMonthFilter").value="";
   renderZohoDocs();
 }
 
@@ -1015,28 +1021,29 @@ function renderB2BReports(){
   if(!$("b2bShipDateFilter").value) $("b2bShipDateFilter").value=todayDateKey();
   const shipDateFilter=$("b2bShipDateFilter").value;
 
-  // --- Shipped Summary: By Finance Category & Transporter, for the chosen Ship Date ---
+  // --- Shipped Summary: By Finance Category, Warehouse & Transporter, for the chosen Ship Date ---
   const shippedOnDate=orderRows.filter(r=>dateKey(get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]))===shipDateFilter);
-  const shippedGroups=new Map(); // key: "financeCategory||transporter"
+  const shippedGroups=new Map(); // key: "financeCategory||warehouse||transporter"
   shippedOnDate.forEach(r=>{
     const fc=norm(get(r,["finance_category","Finance Category","Category"]))||"(Blank)";
+    const wh=norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))||"(Blank)";
     const tr=norm(get(r,["Transporter","Transporter Name","Courier","Courier Name"]))||"(Blank)";
-    const key=fc+"||"+tr;
-    if(!shippedGroups.has(key)) shippedGroups.set(key,{fc,tr,orders:new Set(),qty:0});
+    const key=fc+"||"+wh+"||"+tr;
+    if(!shippedGroups.has(key)) shippedGroups.set(key,{fc,wh,tr,orders:new Set(),qty:0});
     const g=shippedGroups.get(key);
     const id=norm(get(r,["Order No","OrderNo","Order Number","Order ID"]));
     if(id) g.orders.add(id);
     g.qty+=num(get(r,["Shipped Qty"]));
   });
-  const shippedRows=[...shippedGroups.values()].sort((a,b)=>a.fc.localeCompare(b.fc)||a.tr.localeCompare(b.tr));
+  const shippedRows=[...shippedGroups.values()].sort((a,b)=>a.fc.localeCompare(b.fc)||a.wh.localeCompare(b.wh)||a.tr.localeCompare(b.tr));
   const shippedTotalOrders=shippedRows.reduce((s,g)=>s+g.orders.size,0);
   const shippedTotalQty=shippedRows.reduce((s,g)=>s+g.qty,0);
   $("b2bShippedTbody").innerHTML=(
-    shippedRows.map(g=>`<tr><td>${esc(g.fc)}</td><td>${esc(g.tr)}</td><td>${g.orders.size.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
-    || `<tr><td colspan="4" class="muted">No orders shipped on ${esc(shipDateFilter)}.</td></tr>`
-  ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total</td><td>${shippedTotalOrders.toLocaleString()}</td><td>${shippedTotalQty.toLocaleString()}</td></tr>`;
+    shippedRows.map(g=>`<tr><td>${esc(g.fc)}</td><td>${esc(g.wh)}</td><td>${esc(g.tr)}</td><td>${g.orders.size.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">No orders shipped on ${esc(shipDateFilter)}.</td></tr>`
+  ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="3">Grand Total</td><td>${shippedTotalOrders.toLocaleString()}</td><td>${shippedTotalQty.toLocaleString()}</td></tr>`;
 
-  // --- Pending Orders Summary: By Finance Category (current snapshot, not date-filtered) ---
+  // --- Pending Orders Summary: By Finance Category & Warehouse (current snapshot, not date-filtered) ---
   const pendingRows=orderRows.filter(r=>{
     const status=norm(get(r,["Status"])).toLowerCase();
     if(status==="cancelled"||status==="closed") return false;
@@ -1044,31 +1051,39 @@ function renderB2BReports(){
     const sd=get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]);
     return !norm(sd); // no ship date recorded yet = still pending
   });
-  const pendingGroups=new Map();
+  const pendingGroups=new Map(); // key: "financeCategory||warehouse"
   pendingRows.forEach(r=>{
     const fc=norm(get(r,["finance_category","Finance Category","Category"]))||"(Blank)";
-    if(!pendingGroups.has(fc)) pendingGroups.set(fc,{count:0,orderQty:0,qty:0});
-    const g=pendingGroups.get(fc);
+    const wh=norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))||"(Blank)";
+    const key=fc+"||"+wh;
+    if(!pendingGroups.has(key)) pendingGroups.set(key,{fc,wh,count:0,orderQty:0,qty:0});
+    const g=pendingGroups.get(key);
     g.count+=1;
     g.orderQty+=num(get(r,["Order Qty","Qty"]));
     g.qty+=num(get(r,["Commited Qty","Committed Qty","Commit Qty","Open Qty"]));
   });
-  const pendingList=[...pendingGroups.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
-  const pendingTotalCount=pendingList.reduce((s,[,g])=>s+g.count,0);
-  const pendingTotalOrderQty=pendingList.reduce((s,[,g])=>s+g.orderQty,0);
-  const pendingTotalQty=pendingList.reduce((s,[,g])=>s+g.qty,0);
+  const pendingList=[...pendingGroups.values()].sort((a,b)=>a.fc.localeCompare(b.fc)||a.wh.localeCompare(b.wh));
+  const pendingTotalCount=pendingList.reduce((s,g)=>s+g.count,0);
+  const pendingTotalOrderQty=pendingList.reduce((s,g)=>s+g.orderQty,0);
+  const pendingTotalQty=pendingList.reduce((s,g)=>s+g.qty,0);
   $("b2bPendingTbody").innerHTML=(
-    pendingList.map(([fc,g])=>`<tr><td>${esc(fc)}</td><td>${g.count.toLocaleString()}</td><td>${g.orderQty.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
-    || `<tr><td colspan="4" class="muted">No pending orders currently.</td></tr>`
-  ) + `<tr style="font-weight:800;background:#f7f9fb"><td>Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
+    pendingList.map(g=>`<tr><td>${esc(g.fc)}</td><td>${esc(g.wh)}</td><td>${g.count.toLocaleString()}</td><td>${g.orderQty.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">No pending orders currently.</td></tr>`
+  ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
 }
 
 function renderZohoDocs(){
   const source = current && current.length ? current : orderRows;
-  const requiredRows = source.filter(r=>{
+  const isCancelledClosed = r => { const s=norm(get(r,["Status"])).toLowerCase(); return s==="cancelled"||s==="closed"; };
+  const ti_bos_rows = source.filter(r=>{
     const t=norm(get(r,["Doc_type_B2B","Doc Type B2B","DocType_B2B","Doc Type"])).toUpperCase();
     return t==="TI" || t==="BOS";
   });
+  // Cancelled/Closed orders don't meaningfully "need" a Zoho DOC No. anymore -
+  // counting them under Required/Missing was inflating those numbers.
+  // They're now excluded from that math and shown in their own KPI instead.
+  const requiredRows = ti_bos_rows.filter(r=>!isCancelledClosed(r));
+  const cancelledClosedRows = ti_bos_rows.filter(isCancelledClosed);
 
   const orderIdOf = r => norm(get(r,["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
   const docOf = r => norm(get(r,["Zoho_DOCNo","Zoho DOCNo","Zoho_DocNo","Zoho DOC No","Zoho Doc No"]));
@@ -1104,11 +1119,13 @@ function renderZohoDocs(){
   const availableOrders=requiredOrders.filter(r=>!!getDoc(r));
   const missingOrders=requiredOrders.filter(r=>!getDoc(r));
   const uniqueDocs=new Set(availableOrders.map(getDoc).filter(Boolean));
+  const cancelledClosedOrderIds=new Set(cancelledClosedRows.map(orderIdOf).filter(Boolean));
 
   $("zohoKpis").innerHTML=[
-    ["Required Doc Orders",requiredOrders.length,"TI + BOS orders"],
+    ["Required Doc Orders",requiredOrders.length,"TI + BOS orders (excludes Cancelled/Closed)"],
     ["Zoho DOC No. Available",uniqueDocs.size,"Unique Zoho DOC No."],
-    ["Missing DOC No.",missingOrders.length,"Required orders without Zoho DOC No."]
+    ["Missing DOC No.",missingOrders.length,"Required orders without Zoho DOC No."],
+    ["Cancelled/Closed",cancelledClosedOrderIds.size,"TI/BOS orders excluded above (cancelled or closed)"]
   ].map(x=>`<div class="zoho-card"><h3>${esc(x[0])}</h3><div class="big">${Number(x[1]).toLocaleString()}</div><div class="muted">${esc(x[2])}</div></div>`).join("");
 
   function groupSummary(rows,keyFn){
@@ -1139,8 +1156,8 @@ function renderZohoDocs(){
     const pendingForDate=dateRows.filter(r=>!getDoc(r));
     $("zohoPendingDetailNote").textContent=`Showing ${pendingForDate.length.toLocaleString()} order(s) missing Zoho DOC No. for ${dateFilter}.`;
     $("zohoPendingDetailTbody").innerHTML=pendingForDate.map(r=>
-      `<tr><td>${esc(orderIdOf(r))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Status"]))}</td><td>${esc(getType(r))}</td><td>${num(get(r,["Order Qty","Qty"])).toLocaleString()}</td><td>${esc(dateOf(r))}</td></tr>`
-    ).join("") || `<tr><td colspan="6" class="muted">No missing DOC No. orders for ${esc(dateFilter)}.</td></tr>`;
+      `<tr><td>${esc(orderIdOf(r))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["finance_category","Finance Category","Category"]))}</td><td>${esc(get(r,["Status"]))}</td><td>${esc(getType(r))}</td><td>${num(get(r,["Order Qty","Qty"])).toLocaleString()}</td><td>${esc(dateOf(r))}</td></tr>`
+    ).join("") || `<tr><td colspan="7" class="muted">No missing DOC No. orders for ${esc(dateFilter)}.</td></tr>`;
   } else {
     $("zohoPendingDetailNote").textContent="Select a specific date above (Date Filter) to see which orders are missing their Zoho DOC No. for that date.";
     $("zohoPendingDetailTbody").innerHTML="";
@@ -1149,21 +1166,6 @@ function renderZohoDocs(){
   $("zohoMonthTbody").innerHTML=groupSummary(monthRows,r=>dateOf(r).slice(0,7)).map(([m,x])=>
     `<tr><td>${esc(m)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
   ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected month.</td></tr>`;
-
-  const detailMap=new Map();
-  requiredOrders.forEach(r=>{
-    const doc=getDoc(r);
-    if(!doc) return;
-    if(!detailMap.has(doc)) detailMap.set(doc,{type:getType(r),orders:new Set(),qty:0,date:dateOf(r)});
-    const x=detailMap.get(doc),id=orderIdOf(r);
-    if(id) x.orders.add(id);
-    x.qty+=num(get(r,["Order Qty","Qty"]));
-    const d=dateOf(r);
-    if(d && (!x.date || d<x.date)) x.date=d;
-  });
-  $("zohoDetailTbody").innerHTML=[...detailMap.entries()].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true})).map(([doc,x])=>
-    `<tr><td><b>${esc(doc)}</b></td><td>${esc(x.type)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${esc(x.date)}</td></tr>`
-  ).join("") || `<tr><td colspan="5" class="muted">No Zoho DOC No. found for TI/BOS.</td></tr>`;
 }
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();refreshActiveTabIfNeeded();}
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();slaDirty=false;}
@@ -1179,6 +1181,7 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 ["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("zohoDateFilter").addEventListener("change",renderZohoDocs);
+$("zohoDateSectionMonthFilter").addEventListener("change",()=>{ $("zohoDateFilter").value=""; renderZohoDocs(); });
 $("b2bShipDateFilter").addEventListener("change",renderB2BReports);
 $("zohoMonthFilter").addEventListener("change",renderZohoDocs);
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
