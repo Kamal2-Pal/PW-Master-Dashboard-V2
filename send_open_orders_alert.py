@@ -310,7 +310,7 @@ def build_email_html(open_orders, max_rows=300):
       <p>Hi Team,</p>
       <p>Please find attached the details of the below-mentioned open orders.</p>
       <p style="color:#555">
-        <b>Note:</b> For orders that have been pending for more than 48 hours, kindly share the
+        <b>Note:</b> For orders that have been pending for a long time, kindly share the
         relevant remarks/reasons so that we can update the same in the dashboard accordingly.
       </p>
       <h2 style="margin-bottom:4px">Open Orders Summary</h2>
@@ -373,6 +373,20 @@ def send_email(html_body, subject):
 
 
 def main():
+    # Data extraction + commit still happens every 2 hours (that schedule is
+    # unchanged, on purpose - the dashboard needs fresh data that often).
+    # Only the EMAIL is limited to twice a day, close to 9 AM and 7 PM IST.
+    # The workflow's existing cron ("0 */2 * * *") triggers at :30 past every
+    # even UTC hour, which lands at 9:30 AM and 7:30 PM IST specifically -
+    # checking the hour (ignoring the :30 minutes) matches exactly those two
+    # runs among the 12 that happen per day, with no YAML/schedule changes
+    # needed.
+    EMAIL_HOURS_IST = {9, 19}  # ~9:30 AM and ~7:30 PM IST, given the current schedule
+    current_hour = now_ist().hour
+    if current_hour not in EMAIL_HOURS_IST:
+        print(f"[diagnostic] Current IST hour is {current_hour} - not an email-sending window ({sorted(EMAIL_HOURS_IST)}). Data still synced/committed normally, email skipped this run.")
+        return
+
     current_rows = read_xlsx_best_sheet("data.xlsx") if os.path.exists("data.xlsx") else []
     print(f"[diagnostic] data.xlsx rows read: {len(current_rows)}")
     if current_rows:
