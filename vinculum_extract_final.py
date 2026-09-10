@@ -15,6 +15,7 @@ Automatically:
 
 import os
 import json
+import re
 
 # Credentials are supplied by GitHub Actions environment variables.
 VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
@@ -199,13 +200,19 @@ def select_vinculum_channels(driver, channels):
     """
     Select all requested channels.
     First tries a native <select>/<option> control, then a custom
-    multiselect by opening the Channel control and clicking exact labels.
+    multiselect by opening the Channel control and clicking matching labels.
     Fails loudly if all requested channels cannot be confirmed.
-    """
-    wanted = [c.strip().lower() for c in channels]
 
+    Matching is whitespace-agnostic everywhere below: ALL whitespace is
+    stripped out (not just collapsed) before comparing, so "M10 - B2B_BOS"
+    and "M10-B2B_BOS" (or any other spacing variant Vinculum's UI might use)
+    are treated as identical. This is what broke previously when Vinculum
+    removed the spaces around hyphens in some channel labels.
+    """
     def norm(v):
-        return " ".join((v or "").split()).strip().lower()
+        return re.sub(r"\s+", "", v or "").lower()
+
+    wanted = [norm(c) for c in channels]
 
     # Native select / multi-select
     best = None
@@ -228,7 +235,8 @@ def select_vinculum_channels(driver, channels):
             const s = arguments[0];
             const wanted = arguments[1];
             for (const o of s.options) {
-                o.selected = wanted.includes((o.textContent || "").trim().toLowerCase());
+                const norm = (t) => (t || "").replace(/\\s+/g, "").toLowerCase();
+                o.selected = wanted.includes(norm(o.textContent));
             }
             s.dispatchEvent(new Event("input", {bubbles:true}));
             s.dispatchEvent(new Event("change", {bubbles:true}));
@@ -236,8 +244,8 @@ def select_vinculum_channels(driver, channels):
         time.sleep(1)
 
         selected = driver.execute_script("""
-            return Array.from(arguments[0].selectedOptions)
-              .map(o => (o.textContent || "").trim().toLowerCase());
+            const norm = (t) => (t || "").replace(/\\s+/g, "").toLowerCase();
+            return Array.from(arguments[0].selectedOptions).map(o => norm(o.textContent));
         """, best)
 
         missing = [channels[i] for i, c in enumerate(wanted) if c not in set(selected)]
@@ -262,32 +270,43 @@ def select_vinculum_channels(driver, channels):
             txt = norm(el.text)
             aria = norm(el.get_attribute("aria-label"))
             title = norm(el.get_attribute("title"))
-            if txt == "channel" or aria == "channel" or title == "channel"                or "select channel" in txt or "select channel" in aria or "select channel" in title:
+            if txt == "channel" or aria == "channel" or title == "channel" \
+               or "selectchannel" in txt or "selectchannel" in aria or "selectchannel" in title:
                 driver.execute_script("arguments[0].click();", el)
                 time.sleep(0.5)
                 break
         except Exception:
             pass
 
+    # Instead of an exact XPath string match per channel (which breaks the
+    # moment Vinculum's spacing changes even slightly), fetch every
+    # plausible option-like element ONCE and match them by the same
+    # whitespace-stripped comparison used above.
+    candidates = driver.find_elements(
+        By.XPATH,
+        "//*[self::option or self::li or self::label or self::span or self::div or self::td or self::a]"
+    )
+    wanted_set = set(wanted)
     clicked = set()
-    for channel in channels:
-        candidates = driver.find_elements(
-            By.XPATH,
-            f"//*[self::option or self::li or self::label or self::span or self::div or self::td or self::a]"
-            f"[normalize-space(.)={repr(channel)}]"
-        )
-        for el in candidates:
-            try:
-                if not el.is_displayed():
-                    continue
-                if len((el.text or "").strip()) > len(channel) + 20:
+    for el in candidates:
+        if len(clicked) == len(channels):
+            break
+        try:
+            if not el.is_displayed():
+                continue
+            el_text = (el.text or "").strip()
+            if not el_text or len(el_text) > 60:
+                continue
+            key = norm(el_text)
+            if key in wanted_set:
+                matched_channel = channels[wanted.index(key)]
+                if matched_channel in clicked:
                     continue
                 driver.execute_script("arguments[0].click();", el)
-                clicked.add(channel)
+                clicked.add(matched_channel)
                 time.sleep(0.15)
-                break
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     if len(clicked) != len(channels):
         missing = [c for c in channels if c not in clicked]
