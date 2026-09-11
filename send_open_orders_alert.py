@@ -86,6 +86,9 @@ DATE_FIELDS = ["Order create date", "OrderDate", "Order_Date", "Date"]
 SHIP_DATE_FIELDS = ["Actual_ShipDate", "Ship_Date", "Shipped_Date"]
 MANIFEST_DATE_FIELDS = ["Manifest Create Date", "Manifest_Create_Date", "ManifestCreateDate"]
 WAREHOUSE_FIELDS = ["FulfillmentLocationName", "Warehouse", "Location"]
+# Dashboard is scoped to a single warehouse only - kept in sync with
+# DASHBOARD_WAREHOUSE_FILTER in index.html.
+DASHBOARD_WAREHOUSE_FILTER = "Sikanderabad_FC1"
 SHIPPED_STATUSES = {"shipped complete", "partially shipped", "delivered", "shipped & returned"}
 
 
@@ -409,6 +412,11 @@ def main():
 
     orders = order_level(raw)
     print(f"[diagnostic] unique orders after order_level(): {len(orders)}")
+
+    # Dashboard is now scoped to a single warehouse only - keep the email
+    # consistent with that.
+    orders = [o for o in orders if norm(get(o, WAREHOUSE_FIELDS)) == DASHBOARD_WAREHOUSE_FILTER]
+    print(f"[diagnostic] orders after {DASHBOARD_WAREHOUSE_FILTER} warehouse filter: {len(orders)}")
 
     remarks_map = fetch_google_sheet_remarks()
     print(f"[diagnostic] Google Sheet remarks fetched: {len(remarks_map)}")
