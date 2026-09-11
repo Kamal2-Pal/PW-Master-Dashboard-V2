@@ -447,7 +447,17 @@ let raw=[], current=[], orderRows=[];
 // summary, once inside buildSlaRows...). On a large history.xlsx that repeated
 // full-dataset scan is what froze the tab / triggered "Page Unresponsive".
 // Now it's computed once per data load and cached here.
-function refreshOrderRows(){ orderRows = orderLevel(raw); }
+// Dashboard is scoped to a single warehouse only - filtering here (the one
+// place orderRows gets built) means every tab and every summary downstream
+// (Order Fulfillment, Zoho Docs, 48H SLA, B2B_Reports) automatically only
+// ever sees this warehouse's data, with no need to repeat the filter
+// separately in each tab's rendering logic.
+const DASHBOARD_WAREHOUSE_FILTER = "Sikanderabad_FC1";
+function refreshOrderRows(){
+  orderRows = orderLevel(raw).filter(r =>
+    norm(get(r,["FulfillmentLocationName","Warehouse","Location"])) === DASHBOARD_WAREHOUSE_FILTER
+  );
+}
 
 // ============================================================
 // PARSED-FILE CACHE (IndexedDB)
