@@ -35,11 +35,21 @@ jobs:
         run: |
           python "vinculum_extract_final.py"
 
+      # Runs the Returns/Inbound Enquiry extraction separately. Uses
+      # continue-on-error so a problem here never blocks the (more critical)
+      # order data from being committed - if this fails, returns.xlsx just
+      # stays at its last successful value until the next run.
+      - name: Run Vinculum Returns Extract
+        id: extract_returns
+        continue-on-error: true
+        run: |
+          python "vinculum_returns_extract.py"
+
       # Runs ONLY if the extract step above failed - uploads whatever
       # screenshot/page-source/log the script may have saved on error, as a
       # downloadable Actions artifact, so a failure can actually be diagnosed.
       - name: Upload failure diagnostics
-        if: failure() && steps.extract.outcome == 'failure'
+        if: failure() || steps.extract_returns.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: vinculum-extract-failure-${{ github.run_id }}
@@ -68,6 +78,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.xlsx data-meta.json
+          if [ -f returns.xlsx ]; then git add returns.xlsx returns-meta.json; fi
 
           if git diff --cached --quiet; then
             echo "No changes to data.xlsx - nothing to commit (extract may have produced identical data, or failed before this point)."
