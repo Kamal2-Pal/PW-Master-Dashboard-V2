@@ -1119,7 +1119,7 @@ function renderB2BReports(){
 // Candidate column names for the shipped order's monetary value. This has
 // NOT been confirmed against the real data yet - update this list (or the
 // note below) once the exact column name is checked, per the request.
-const SHIPPED_VALUE_FIELDS = ["Order Value","Total Value","Invoice Value","MRP Value","Value","Shipped Value","Total Amount","Amount"];
+const SHIPPED_VALUE_FIELDS = ["Order Amount","Order Value","Total Value","Invoice Value","MRP Value","Value","Shipped Value","Total Amount","Amount"];
 
 function renderReturnsTab(){
   // --- Shipped side: from orderRows (already scoped to the single warehouse),
@@ -1151,7 +1151,7 @@ function renderReturnsTab(){
   if(!returnsRaw.length){
     $("returnsColumnNote").textContent="No returns.xlsx data found yet - the Returns extraction workflow step may not have run successfully yet, or hasn't been deployed. Shipped-side numbers below still reflect current order data.";
   } else {
-    $("returnsColumnNote").textContent="Month-wise comparison: quantity & value shipped vs. quantity & value returned. (Shipped Value column is a best-guess match - confirm/adjust SHIPPED_VALUE_FIELDS if it looks wrong.)";
+    $("returnsColumnNote").textContent="Month-wise comparison: quantity & value shipped vs. quantity & value returned.";
   }
 
   let totalShippedQty=0,totalShippedValue=0,totalReturnQty=0,totalReturnValue=0;
