@@ -59,6 +59,16 @@ select,input{min-width:140px;padding:9px;border:1px solid #ccd5df;border-radius:
 .section-title{font-size:17px;font-weight:800;margin-bottom:12px}
 .hbars{display:flex;flex-direction:column;gap:8px}.hbar{display:grid;grid-template-columns:minmax(120px,1fr) 4fr 75px;gap:8px;align-items:center;font-size:12px}.hbar .track{height:12px;background:#edf1f5;border-radius:8px;overflow:hidden}.hbar .fill{height:100%;background:#2d8cff}.hbar b{text-align:right}
 .chart{height:250px;display:flex;align-items:flex-end;gap:7px;overflow:auto;padding:10px 4px 0;border-top:1px solid #eef1f4}.bar{min-width:38px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}.bar i{display:block;width:28px;background:#2d8cff;border-radius:4px 4px 0 0}.bar em{font-size:9px;font-style:normal;color:#4f5d6a}.bar span{font-size:9px;color:#667686;white-space:nowrap}
+.dual-chart{height:270px;display:flex;flex-direction:column;gap:8px}
+.dual-chart .legend{display:flex;gap:16px;font-size:11px;color:#4f5d6a;padding:0 4px}
+.dual-chart .legend span{display:flex;align-items:center;gap:5px}
+.dual-chart .legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.dual-chart .bars{flex:1;display:flex;align-items:flex-end;gap:14px;overflow-x:auto;padding:10px 4px 0;border-top:1px solid #eef1f4}
+.dual-chart .month-group{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:56px;height:100%;justify-content:flex-end}
+.dual-chart .pair{display:flex;align-items:flex-end;gap:3px;height:100%}
+.dual-chart .pair .shipped{width:16px;background:#2d8cff;border-radius:3px 3px 0 0}
+.dual-chart .pair .returned{width:16px;background:#e0554f;border-radius:3px 3px 0 0}
+.dual-chart .month-group span{font-size:9px;color:#667686;white-space:nowrap}
 .table-card{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px;margin-bottom:16px}
 .table-wrap{overflow:auto;max-height:520px;border:1px solid #edf0f3;border-radius:8px}
 table{border-collapse:collapse;width:100%;font-size:11px;min-width:900px}
@@ -154,6 +164,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <button class="tab" data-tab="zohoTab">Zoho Docs</button>
   <button class="tab" data-tab="slaTab">48H Ship SLA</button>
   <button class="tab" data-tab="b2bTab">B2B_Reports</button>
+  <button class="tab" data-tab="returnsTab">Returns</button>
 </div>
 
 <main class="wrap">
@@ -299,6 +310,27 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Warehouse</th><th>Count of Order No</th><th>Sum of Order Qty</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
   </section>
 </section>
+
+<section id="returnsTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>Returns</h2>
+      <div class="note" id="returnsColumnNote">Month-wise comparison: quantity &amp; value shipped vs. quantity &amp; value returned.</div>
+    </div>
+  </div>
+
+  <div class="kpis" id="returnsKpis"></div>
+
+  <div class="grid">
+    <section class="card"><div class="section-title">Month-wise Qty: Shipped vs Returned</div><div id="returnsQtyChart" class="dual-chart"></div></section>
+    <section class="card"><div class="section-title">Month-wise Value: Shipped vs Returned</div><div id="returnsValueChart" class="dual-chart"></div></section>
+  </div>
+
+  <section class="table-card">
+    <div class="section-title">Month-wise Shipped vs Return Detail</div>
+    <div class="table-wrap"><table><thead><tr><th>Month</th><th>Shipped Qty</th><th>Shipped Value</th><th>Return Qty</th><th>Return Value</th><th>Return Qty %</th><th>Return Value %</th></tr></thead><tbody id="returnsTbody"></tbody></table></div>
+  </section>
+</section>
 </main>
 
 <script>
@@ -441,7 +473,7 @@ async function handleLogout() {
   document.getElementById('loginOverlay').style.display = 'flex';
 }
 
-let raw=[], current=[], orderRows=[];
+let raw=[], current=[], orderRows=[], returnsRaw=[];
 // orderLevel(raw) used to be recalculated ~9 times per render (once per filter
 // dropdown, once inside filteredRows, once for "yesterday", once for the month
 // summary, once inside buildSlaRows...). On a large history.xlsx that repeated
@@ -862,8 +894,8 @@ const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivere
 // one being shown, and cache the result (slaDirty/zohoDirty) so re-switching
 // back to an already-fresh tab is instant instead of recomputing again.
 let slaBaseRows=[];
-let slaDirty=true, zohoDirty=true, b2bDirty=true;
-function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; b2bDirty=true; }
+let slaDirty=true, zohoDirty=true, b2bDirty=true, returnsDirty=true;
+function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; b2bDirty=true; returnsDirty=true; }
 function refreshActiveTabIfNeeded(){
   if($("slaTab").classList.contains("active-panel")){
     if(slaDirty){ initSlaFilters(); applySlaFilters(); slaDirty=false; }
@@ -871,6 +903,8 @@ function refreshActiveTabIfNeeded(){
     if(zohoDirty){ renderZohoDocs(); zohoDirty=false; }
   } else if($("b2bTab").classList.contains("active-panel")){
     if(b2bDirty){ renderB2BReports(); b2bDirty=false; }
+  } else if($("returnsTab").classList.contains("active-panel")){
+    if(returnsDirty){ renderReturnsTab(); returnsDirty=false; }
   }
 }
 
@@ -1082,6 +1116,86 @@ function renderB2BReports(){
   ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
 }
 
+// Candidate column names for the shipped order's monetary value. This has
+// NOT been confirmed against the real data yet - update this list (or the
+// note below) once the exact column name is checked, per the request.
+const SHIPPED_VALUE_FIELDS = ["Order Value","Total Value","Invoice Value","MRP Value","Value","Shipped Value","Total Amount","Amount"];
+
+function renderReturnsTab(){
+  // --- Shipped side: from orderRows (already scoped to the single warehouse),
+  // grouped by Actual_ShipDate's month. ---
+  const shippedByMonth = new Map();
+  orderRows.forEach(r=>{
+    const m = dateKey(get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"])).slice(0,7);
+    if(!m) return;
+    if(!shippedByMonth.has(m)) shippedByMonth.set(m,{qty:0,value:0});
+    const g=shippedByMonth.get(m);
+    g.qty += num(get(r,["Shipped Qty"]));
+    g.value += num(get(r,SHIPPED_VALUE_FIELDS));
+  });
+
+  // --- Return side: from returnsRaw (Inbound Enquiry / GRN export),
+  // grouped by Material Received Date's month. ---
+  const returnByMonth = new Map();
+  returnsRaw.forEach(r=>{
+    const m = dateKey(get(r,["Material Received Date"])).slice(0,7);
+    if(!m) return;
+    if(!returnByMonth.has(m)) returnByMonth.set(m,{qty:0,value:0});
+    const g=returnByMonth.get(m);
+    g.qty += num(get(r,["Recieved Qty","Received Qty"]));
+    g.value += num(get(r,["GRN Value With Tax"]));
+  });
+
+  const allMonths = unique([...shippedByMonth.keys(), ...returnByMonth.keys()]);
+
+  if(!returnsRaw.length){
+    $("returnsColumnNote").textContent="No returns.xlsx data found yet - the Returns extraction workflow step may not have run successfully yet, or hasn't been deployed. Shipped-side numbers below still reflect current order data.";
+  } else {
+    $("returnsColumnNote").textContent="Month-wise comparison: quantity & value shipped vs. quantity & value returned. (Shipped Value column is a best-guess match - confirm/adjust SHIPPED_VALUE_FIELDS if it looks wrong.)";
+  }
+
+  let totalShippedQty=0,totalShippedValue=0,totalReturnQty=0,totalReturnValue=0;
+  allMonths.forEach(m=>{
+    const s=shippedByMonth.get(m)||{qty:0,value:0};
+    const r=returnByMonth.get(m)||{qty:0,value:0};
+    totalShippedQty+=s.qty; totalShippedValue+=s.value;
+    totalReturnQty+=r.qty; totalReturnValue+=r.value;
+  });
+  const returnQtyPct = totalShippedQty ? (totalReturnQty/totalShippedQty*100) : 0;
+  const returnValuePct = totalShippedValue ? (totalReturnValue/totalShippedValue*100) : 0;
+
+  $("returnsKpis").innerHTML=[
+    ["Total Shipped Qty",totalShippedQty.toLocaleString()],
+    ["Total Shipped Value",totalShippedValue.toLocaleString()],
+    ["Total Return Qty",totalReturnQty.toLocaleString()],
+    ["Total Return Value",totalReturnValue.toLocaleString()],
+    ["Return Qty %",returnQtyPct.toFixed(1)+"%"],
+    ["Return Value %",returnValuePct.toFixed(1)+"%"]
+  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
+
+  function buildDualChart(el, dataFn){
+    if(!allMonths.length){ el.innerHTML='<div class="note">No data</div>'; return; }
+    const max = Math.max(...allMonths.map(m=>{const d=dataFn(m); return Math.max(d.shipped,d.returned);}),1);
+    el.innerHTML = `<div class="legend"><span><i style="background:#2d8cff"></i>Shipped</span><span><i style="background:#e0554f"></i>Returned</span></div>`+
+      `<div class="bars">${allMonths.map(m=>{
+        const d=dataFn(m);
+        const sH=Math.max(3,d.shipped/max*200), rH=Math.max(3,d.returned/max*200);
+        return `<div class="month-group"><div class="pair"><div class="shipped" style="height:${sH}px" title="Shipped: ${d.shipped.toLocaleString()}"></div><div class="returned" style="height:${rH}px" title="Returned: ${d.returned.toLocaleString()}"></div></div><span>${m}</span></div>`;
+      }).join("")}</div>`;
+  }
+
+  buildDualChart($("returnsQtyChart"), m=>({shipped:(shippedByMonth.get(m)||{qty:0}).qty, returned:(returnByMonth.get(m)||{qty:0}).qty}));
+  buildDualChart($("returnsValueChart"), m=>({shipped:(shippedByMonth.get(m)||{value:0}).value, returned:(returnByMonth.get(m)||{value:0}).value}));
+
+  $("returnsTbody").innerHTML = allMonths.map(m=>{
+    const s=shippedByMonth.get(m)||{qty:0,value:0};
+    const r=returnByMonth.get(m)||{qty:0,value:0};
+    const qPct = s.qty ? (r.qty/s.qty*100) : 0;
+    const vPct = s.value ? (r.value/s.value*100) : 0;
+    return `<tr><td>${m}</td><td>${s.qty.toLocaleString()}</td><td>${s.value.toLocaleString()}</td><td>${r.qty.toLocaleString()}</td><td>${r.value.toLocaleString()}</td><td>${qPct.toFixed(1)}%</td><td>${vPct.toFixed(1)}%</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="muted">No data available.</td></tr>`;
+}
+
 function renderZohoDocs(){
   const source = current && current.length ? current : orderRows;
   const isCancelledClosed = r => { const s=norm(get(r,["Status"])).toLowerCase(); return s==="cancelled"||s==="closed"; };
@@ -1185,7 +1299,7 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
   document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
   btn.classList.add("active");
   $(btn.dataset.tab).classList.add("active-panel");
-  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"||btn.dataset.tab==="b2bTab"){refreshActiveTabIfNeeded()}
+  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"||btn.dataset.tab==="b2bTab"||btn.dataset.tab==="returnsTab"){refreshActiveTabIfNeeded()}
 }));
 
 ["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
@@ -1295,6 +1409,19 @@ async function loadAllExcelData(){
   }
 
   raw = mergeAndDeduplicate(historyData, currentMonthData);
+
+  // Returns data (from the Inbound Enquiry / GRN export) is optional - the
+  // Returns tab just shows "no data" if this file doesn't exist yet or the
+  // returns-extraction workflow step hasn't produced it successfully.
+  try {
+    const rows = await fetchAndParseWithCache("returns.xlsx");
+    returnsRaw = (rows || []).filter(r =>
+      norm(get(r,["Inbound Location","Warehouse","Location","FulfillmentLocationName"])) === DASHBOARD_WAREHOUSE_FILTER
+    );
+  } catch (err) {
+    console.warn("returns.xlsx fetch failed (Returns tab will show no data)", err);
+    returnsRaw = [];
+  }
 
   if (raw.length === 0) {
     $("sourceText").textContent = "No data loaded. Please verify data.xlsx or history file(s) in repository.";
