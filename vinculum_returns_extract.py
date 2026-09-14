@@ -256,6 +256,30 @@ def set_inbound_type_filter(driver, wait, value):
     """Sets the Inbound Type filter dropdown to the given value (e.g. 'Against ASN')."""
     print(f"4) Inbound Type filter ko '{value}' set kar raha hoon...")
 
+    # Primary: exact ID confirmed via inspect element (id="gs_displayInboundType").
+    try:
+        sel = wait.until(EC.presence_of_element_located((By.ID, "gs_displayInboundType")))
+        driver.execute_script(
+            """
+            const s = arguments[0], wanted = arguments[1].toLowerCase();
+            for (const o of s.options) {
+                o.selected = o.textContent.trim().toLowerCase() === wanted;
+            }
+            s.dispatchEvent(new Event('change', {bubbles:true}));
+            """,
+            sel, value,
+        )
+        selected_text = driver.execute_script(
+            "return arguments[0].options[arguments[0].selectedIndex].textContent.trim();", sel
+        )
+        if selected_text.strip().lower() == value.lower():
+            print(f"   #gs_displayInboundType ke through set ho gaya (selected: '{selected_text}').")
+            return
+        print(f"   #gs_displayInboundType mila lekin selection confirm nahi hui (got '{selected_text}') - fallback try kar raha hoon...")
+    except Exception as exc:
+        print(f"   #gs_displayInboundType se set nahi hua ({exc}) - fallback try kar raha hoon...")
+
+    # Fallback 1: any native <select> on the page containing this option text.
     for sel in driver.find_elements(By.TAG_NAME, "select"):
         try:
             if not sel.is_displayed():
@@ -272,12 +296,12 @@ def set_inbound_type_filter(driver, wait, value):
                     """,
                     sel, value,
                 )
-                print("   Native select ke through set ho gaya.")
+                print("   Native select ke through set ho gaya (fallback).")
                 return
         except Exception:
             pass
 
-    # Custom dropdown fallback: click the "--- Select ---" toggle for the
+    # Fallback 2: custom dropdown - click the "--- Select ---" toggle for the
     # Inbound Type column, then click the matching option text.
     toggles = driver.find_elements(By.XPATH, "//*[contains(text(),'--- Select ---')]")
     for toggle in toggles:
@@ -292,7 +316,7 @@ def set_inbound_type_filter(driver, wait, value):
                 )
             )
             driver.execute_script("arguments[0].click();", option_el)
-            print("   Custom dropdown ke through set ho gaya.")
+            print("   Custom dropdown ke through set ho gaya (fallback).")
             return
         except Exception:
             continue
@@ -305,15 +329,25 @@ def set_creation_date_preset(driver, wait, preset_label):
     print(f"5) Creation Date filter ko '{preset_label}' set kar raha hoon...")
 
     date_field = None
-    candidates = driver.find_elements(
-        By.XPATH,
-        "//label[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'creation date')]"
-        "/following::input[1]"
-    )
-    for el in candidates:
+    # Primary: exact ID confirmed via inspect element (id="gs_createdDate").
+    try:
+        el = wait.until(EC.presence_of_element_located((By.ID, "gs_createdDate")))
         if el.is_displayed():
             date_field = el
-            break
+            print("   #gs_createdDate field mil gaya.")
+    except Exception:
+        pass
+
+    if date_field is None:
+        candidates = driver.find_elements(
+            By.XPATH,
+            "//label[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'creation date')]"
+            "/following::input[1]"
+        )
+        for el in candidates:
+            if el.is_displayed():
+                date_field = el
+                break
 
     if date_field is None:
         # Fallback: any visible input whose id/name hints at "creation" + "date".
