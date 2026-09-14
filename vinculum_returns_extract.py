@@ -157,45 +157,21 @@ def build_driver():
 # ============================================================
 
 def open_inbound_enquiry_screen(driver, wait):
-    """Opens WMS -> Inbound -> Inbound Enquiry via the left sidebar flyout menu."""
-    print("2) WMS menu khol raha hoon...")
+    """Opens WMS -> Inbound -> Inbound Enquiry via the left sidebar flyout menu.
+
+    The sidebar trigger icon has NO visible "WMS" text on it - that label
+    only appears INSIDE the flyout menu after the correct icon is hovered.
+    So instead of searching for text that doesn't exist yet (the earlier,
+    failing approach), this hovers each icon-like element in the left
+    sidebar strip one at a time and checks whether "Inbound Enquiry" becomes
+    visible anywhere on the page after each hover - whichever icon reveals
+    it is the right one, without needing to know its exact markup/class.
+    """
+    print("2) Left sidebar ke icons try kar raha hoon 'Inbound Enquiry' dhoondhne ke liye...")
 
     driver.switch_to.default_content()
 
-    wms_el = None
-    candidates = driver.find_elements(
-        By.XPATH,
-        "//*[contains(translate(normalize-space(.),"
-        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'wms')]"
-    )
-    for el in candidates:
-        try:
-            if el.is_displayed() and 0 < len(el.text.strip()) <= 6:
-                wms_el = el
-                break
-        except Exception:
-            pass
-
-    if wms_el is None:
-        raise RuntimeError("WMS sidebar menu icon nahi mila.")
-
-    try:
-        ActionChains(driver).move_to_element(wms_el).perform()
-        time.sleep(1)
-    except Exception:
-        pass
-
-    try:
-        driver.execute_script("arguments[0].click();", wms_el)
-    except Exception:
-        pass
-
-    time.sleep(1)
-
-    print("3) 'Inbound Enquiry' link dhoondh raha hoon...")
-    inbound_enquiry_link = None
-    deadline = time.time() + 15
-    while time.time() < deadline and inbound_enquiry_link is None:
+    def inbound_enquiry_link_now():
         links = driver.find_elements(
             By.XPATH,
             "//*[contains(translate(normalize-space(.),"
@@ -204,15 +180,60 @@ def open_inbound_enquiry_screen(driver, wait):
         for el in links:
             try:
                 if el.is_displayed() and el.is_enabled():
-                    inbound_enquiry_link = el
-                    break
+                    return el
             except Exception:
                 pass
-        if inbound_enquiry_link is None:
-            time.sleep(0.5)
+        return None
+
+    # Candidate sidebar icons: any visible, icon-sized element sitting in the
+    # left ~90px strip of the viewport (matches the vertical icon rail seen
+    # in the screenshots).
+    candidates = driver.find_elements(By.XPATH, "//div | //a | //span | //i | //button")
+    sidebar_icons = []
+    for el in candidates:
+        try:
+            if not el.is_displayed():
+                continue
+            rect = el.rect
+            if rect["x"] <= 90 and 10 <= rect["width"] <= 90 and 10 <= rect["height"] <= 90:
+                sidebar_icons.append(el)
+        except Exception:
+            pass
+
+    print(f"   {len(sidebar_icons)} sidebar icon-candidates mile, hover karke try kar raha hoon...")
+
+    inbound_enquiry_link = None
+    for icon in sidebar_icons:
+        try:
+            ActionChains(driver).move_to_element(icon).perform()
+        except Exception:
+            continue
+        time.sleep(0.6)
+        inbound_enquiry_link = inbound_enquiry_link_now()
+        if inbound_enquiry_link:
+            print("   Sahi sidebar icon mil gaya (hover ke baad 'Inbound Enquiry' dikha).")
+            break
 
     if inbound_enquiry_link is None:
-        raise RuntimeError("'Inbound Enquiry' menu link nahi mila (WMS flyout ke andar).")
+        # Fall back to clicking each icon in case the menu needs a click
+        # rather than (or in addition to) a hover to stay open.
+        print("   Hover se nahi mila, ab click karke try kar raha hoon...")
+        for icon in sidebar_icons:
+            try:
+                driver.execute_script("arguments[0].click();", icon)
+            except Exception:
+                continue
+            time.sleep(0.6)
+            inbound_enquiry_link = inbound_enquiry_link_now()
+            if inbound_enquiry_link:
+                print("   Sahi sidebar icon mil gaya (click ke baad 'Inbound Enquiry' dikha).")
+                break
+
+    if inbound_enquiry_link is None:
+        raise RuntimeError(
+            f"'Inbound Enquiry' link kisi bhi sidebar icon (total {len(sidebar_icons)} try kiye) "
+            "hover/click se nahi mila."
+        )
 
     driver.execute_script("arguments[0].click();", inbound_enquiry_link)
     print("   'Inbound Enquiry' click ho gaya.")
