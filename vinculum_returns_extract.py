@@ -1,22 +1,42 @@
 """
 Vinculum Returns (Inbound Enquiry) Extractor - GitHub Actions version
 ----------------------------------------------------------------------
-1. Active session popup (Force Login / Alert / OK button) auto-handling
-2. Multi-frame fallback for username/password login
-3. Safe Inbound Enquiry screen navigation
-4. Inbound Type filter = "Against ASN" (#gs_displayInboundType)
-5. Creation Date filter = "This Month" (#gs_createdDate)
-6. Search & Detail Export modal field select (#cb_dynamicFieldGrid)
-7. Export trigger & Pending Report polling (matching GENERATEINBOUND)
-8. Report download & Excel metadata update
+Mirrors vinculum_extract_final.py's proven login/Pending-Report/download
+flow, but targets the WMS -> Inbound -> Inbound Enquiry screen instead of
+Order Enquiry:
+
+1. Login to Vinculum (same as orders script)
+2. Open WMS -> Inbound -> Inbound Enquiry
+3. Set Inbound Type = "Against ASN"
+4. Set Creation Date = "This Month"
+5. Search
+6. Detail Export -> select all fields
+7. Wait for Pending Report = SUCCESS (report name contains "InboundEnquiryDetailExport")
+8. Download Excel
+9. Save the latest file as returns.xlsx in the repository root
+
+IMPORTANT: this script was written from screenshots of the Inbound Enquiry
+screen, not by live-testing against it (unlike vinculum_extract_final.py,
+which went through a few rounds of real debugging). The login/download/
+pending-report parts are proven and reused as-is. The navigation and filter
+steps (open_inbound_enquiry_screen, set_inbound_type_filter,
+set_creation_date_this_month) are the parts most likely to need one or two
+rounds of fixing against the real site - if a step fails, the printed
+Hindi-English log line + the GitHub Actions "Upload failure diagnostics"
+screenshot artifact will show exactly which step, same as before.
 """
 
 import os
 import json
+import re
+
+VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
+VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "")
+
 import time
 import glob
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -34,23 +54,27 @@ LOGIN_URL = (
     "eRetailWeb/eRetailLogin.action?popup=true"
 )
 
-VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
-VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "").strip()
+USERNAME = os.environ["VINCULUM_USERNAME"]
+PASSWORD = os.environ["VINCULUM_PASSWORD"]
 
 DOWNLOAD_FOLDER = os.path.abspath("data/downloads_returns")
 OUTPUT_FILE = os.path.abspath("returns.xlsx")
 META_FILE = os.path.abspath("returns-meta.json")
 
-# Filter configurations
+# The filter dropdown option and date-range preset to use on the Inbound
+# Enquiry screen, exactly as specified.
 INBOUND_TYPE_FILTER = "Against ASN"
 DATE_PRESET = "This Month"
 
-# Pending Report Marker
-REPORT_NAME_MARKER = "GENERATEINBOUND"
+# Report-name marker Vinculum shows in the Pending Report grid for this
+# export (seen as "generateInboundEnquiryDetailExport" in the report list).
+# Matched case/space-insensitively as a substring, same style as the orders
+# script's "ORDERENQUIRYEXPORT" marker.
+REPORT_NAME_MARKER = "INBOUNDENQUIRYDETAILEXPORT"
 
 
 # ============================================================
-# HELPERS
+# HELPERS (identical to vinculum_extract_final.py)
 # ============================================================
 
 def wait_for_download(folder, timeout=120, existing_files=None):
@@ -111,8 +135,6 @@ def build_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
     driver = webdriver.Chrome(options=options)
 
@@ -130,208 +152,379 @@ def build_driver():
     return driver
 
 
-def handle_login_popups(driver):
-    """Handles browser alert popups AND HTML modal popups (Force Login / Already Logged in)."""
-    time.sleep(2)
-    # 1. Check Native JS Alert
-    try:
-        alert = driver.switch_to.alert
-        alert_text = alert.text
-        print(f"   Browser Alert detect hua: '{alert_text}'. Accept (OK) kar raha hoon...")
-        alert.accept()
-        time.sleep(2)
-    except Exception:
-        pass
-
-    # 2. Check HTML Popups / Modal Buttons (OK, Yes, Continue, Force Login)
-    driver.switch_to.default_content()
-    popup_buttons = driver.find_elements(
-        By.XPATH,
-        "//button[contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'ok') or "
-        "contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'yes') or "
-        "contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'force') or "
-        "contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'continue')] | "
-        "//input[@type='button' or @type='submit'][contains(translate(@value,'OKYESCONTINUEFORCE','okyescontinueforce'),'ok') or "
-        "contains(translate(@value,'OKYESCONTINUEFORCE','okyescontinueforce'),'yes')]"
-    )
-    for btn in popup_buttons:
-        try:
-            if btn.is_displayed():
-                print("   HTML Login Popup button detect hua. Click kar raha hoon...")
-                driver.execute_script("arguments[0].click();", btn)
-                time.sleep(2)
-                break
-        except Exception:
-            pass
-
-
 # ============================================================
-# INBOUND ENQUIRY NAVIGATION & FILTERS
+# INBOUND ENQUIRY NAVIGATION + FILTERS
 # ============================================================
 
 def open_inbound_enquiry_screen(driver, wait):
-    """Opens Inbound Enquiry screen safely."""
-    print("2) 'Inbound Enquiry' screen open kar raha hoon...")
+    """Opens WMS -> Inbound -> Inbound Enquiry via the left sidebar flyout menu.
+
+    The sidebar trigger icon has NO visible "WMS" text on it - that label
+    only appears INSIDE the flyout menu after the correct icon is hovered.
+    So instead of searching for text that doesn't exist yet (the earlier,
+    failing approach), this hovers each icon-like element in the left
+    sidebar strip one at a time and checks whether "Inbound Enquiry" becomes
+    visible anywhere on the page after each hover - whichever icon reveals
+    it is the right one, without needing to know its exact markup/class.
+    """
+    print("2) Left sidebar ke icons try kar raha hoon 'Inbound Enquiry' dhoondhne ke liye...")
+
     driver.switch_to.default_content()
 
-    # Try JS call
-    try:
-        driver.execute_script("""
-            if (typeof openScreen === 'function') {
-                openScreen('Inbound Enquiry', 'inboundEnquiryBS', 'fa fa-arrow-circle-right');
-            } else if (window.parent && typeof window.parent.openScreen === 'function') {
-                window.parent.openScreen('Inbound Enquiry', 'inboundEnquiryBS', 'fa fa-arrow-circle-right');
-            }
-        """)
-        time.sleep(3)
-    except Exception:
-        pass
-
-    def get_inbound_frame():
-        driver.switch_to.default_content()
-        if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
-            return True
-        for fr in driver.find_elements(By.TAG_NAME, "iframe"):
+    def inbound_enquiry_link_now():
+        links = driver.find_elements(
+            By.XPATH,
+            "//*[contains(translate(normalize-space(.),"
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'inbound enquiry')]"
+        )
+        for el in links:
             try:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(fr)
-                if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
-                    return True
+                if el.is_displayed() and el.is_enabled():
+                    return el
             except Exception:
                 pass
-        return False
+        return None
 
-    if get_inbound_frame():
-        print("   Inbound Enquiry screen verify ho gayi.")
-        return
-
-    # Sidebar Click Navigation Fallback
-    print("   Sidebar menu fallback navigation try kar raha hoon...")
-    driver.switch_to.default_content()
-    for el in driver.find_elements(By.XPATH, "//a | //li | //span"):
+    # Candidate sidebar icons: any visible, icon-sized element sitting in the
+    # left ~90px strip of the viewport (matches the vertical icon rail seen
+    # in the screenshots).
+    candidates = driver.find_elements(By.XPATH, "//div | //a | //span | //i | //button")
+    sidebar_icons = []
+    for el in candidates:
         try:
-            txt = el.text.strip().lower()
-            if "wms" in txt or "inbound" in txt or "enquiry" in txt:
-                driver.execute_script("arguments[0].click();", el)
-                time.sleep(0.5)
+            if not el.is_displayed():
+                continue
+            rect = el.rect
+            if rect["x"] <= 90 and 10 <= rect["width"] <= 90 and 10 <= rect["height"] <= 90:
+                sidebar_icons.append(el)
         except Exception:
             pass
 
-    try:
-        target_link = wait.until(EC.presence_of_element_located((
-            By.XPATH, "//*[contains(translate(normalize-space(.),'INBOUND ENQUIRY','inbound enquiry'),'inbound enquiry')]"
-        )))
-        driver.execute_script("arguments[0].click();", target_link)
-        time.sleep(4)
-    except Exception as e:
-        print(f"   Target link search warning: {e}")
+    print(f"   {len(sidebar_icons)} sidebar icon-candidates mile, hover karke try kar raha hoon...")
 
-    get_inbound_frame()
+    inbound_enquiry_link = None
+    for icon in sidebar_icons:
+        try:
+            ActionChains(driver).move_to_element(icon).perform()
+        except Exception:
+            continue
+        time.sleep(0.6)
+        inbound_enquiry_link = inbound_enquiry_link_now()
+        if inbound_enquiry_link:
+            print("   Sahi sidebar icon mil gaya (hover ke baad 'Inbound Enquiry' dikha).")
+            break
+
+    if inbound_enquiry_link is None:
+        # Fall back to clicking each icon in case the menu needs a click
+        # rather than (or in addition to) a hover to stay open.
+        print("   Hover se nahi mila, ab click karke try kar raha hoon...")
+        for icon in sidebar_icons:
+            try:
+                driver.execute_script("arguments[0].click();", icon)
+            except Exception:
+                continue
+            time.sleep(0.6)
+            inbound_enquiry_link = inbound_enquiry_link_now()
+            if inbound_enquiry_link:
+                print("   Sahi sidebar icon mil gaya (click ke baad 'Inbound Enquiry' dikha).")
+                break
+
+    if inbound_enquiry_link is None:
+        raise RuntimeError(
+            f"'Inbound Enquiry' link kisi bhi sidebar icon (total {len(sidebar_icons)} try kiye) "
+            "hover/click se nahi mila."
+        )
+
+    windows_before_click = driver.window_handles
+    driver.execute_script("arguments[0].click();", inbound_enquiry_link)
+    print("   'Inbound Enquiry' click ho gaya.")
+    time.sleep(2)
+
+    # If the click opened a new browser tab/window (rather than loading into
+    # an iframe of the current one), switch to it - everything we search for
+    # afterward would otherwise silently look in the wrong window.
+    windows_after_click = driver.window_handles
+    if len(windows_after_click) > len(windows_before_click):
+        new_window = [w for w in windows_after_click if w not in windows_before_click][0]
+        driver.switch_to.window(new_window)
+        print(f"   Naya browser tab/window khula tha ({len(windows_after_click)} total) - switch kar diya.")
+
+    # Find which document context (top-level page, or one of possibly several
+    # iframes, possibly added to the DOM with some delay) actually contains
+    # the Inbound Enquiry screen's filter controls. A single check right
+    # after a fixed sleep wasn't enough time on slower CI runners, so this
+    # polls repeatedly (checking top-level, then every iframe, each pass)
+    # until the markers show up or the timeout is hit.
+    def screen_markers_present():
+        try:
+            return bool(driver.find_elements(By.ID, "gs_displayInboundType")) or \
+                   bool(driver.find_elements(By.ID, "gs_createdDate"))
+        except Exception:
+            return False
+
+    found_context = False
+    deadline = time.time() + 25
+    attempt = 0
+    while time.time() < deadline and not found_context:
+        attempt += 1
+        driver.switch_to.default_content()
+        if screen_markers_present():
+            found_context = True
+            print(f"   (attempt {attempt}) Inbound Enquiry screen top-level page par mil gaya.")
+            break
+
+        all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        for fr in all_iframes:
+            try:
+                if not fr.is_displayed():
+                    continue
+                driver.switch_to.default_content()
+                driver.switch_to.frame(fr)
+                if screen_markers_present():
+                    found_context = True
+                    print(f"   (attempt {attempt}) Inbound Enquiry screen iframe ke andar mil gaya ({len(all_iframes)} iframe(s) the).")
+                    break
+
+                # Also check one level of nested iframe (iframe inside this
+                # iframe) - the Order Enquiry screen needed this same nesting.
+                nested_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                for nfr in nested_iframes:
+                    try:
+                        if not nfr.is_displayed():
+                            continue
+                        driver.switch_to.frame(nfr)
+                        if screen_markers_present():
+                            found_context = True
+                            print(f"   (attempt {attempt}) Inbound Enquiry screen NESTED iframe ke andar mil gaya.")
+                            break
+                        driver.switch_to.parent_frame()
+                    except Exception:
+                        try:
+                            driver.switch_to.parent_frame()
+                        except Exception:
+                            pass
+                if found_context:
+                    break
+            except Exception:
+                continue
+
+        if not found_context:
+            time.sleep(1)
+
+    if not found_context:
+        driver.switch_to.default_content()
+        print(f"   {attempt} attempts ke baad bhi screen markers nahi mile; top-level page par hi aage badh raha hoon.")
+        try:
+            print(f"   [debug] Current URL: {driver.current_url}")
+            print(f"   [debug] Open windows/tabs: {len(driver.window_handles)}")
+            print(f"   [debug] iframe count (top-level): {len(driver.find_elements(By.TAG_NAME, 'iframe'))}")
+            body_text = driver.find_element(By.TAG_NAME, "body").text
+            print(f"   [debug] Page body snippet (first 400 chars): {body_text[:400]!r}")
+        except Exception as exc:
+            print(f"   [debug] Diagnostics collection failed: {exc}")
 
 
 def set_inbound_type_filter(driver, wait, value):
-    """Sets the Inbound Type dropdown (#gs_displayInboundType)."""
+    """Sets the Inbound Type filter dropdown to the given value (e.g. 'Against ASN')."""
     print(f"4) Inbound Type filter ko '{value}' set kar raha hoon...")
+
+    # Primary: exact ID confirmed via inspect element (id="gs_displayInboundType").
     try:
         sel = wait.until(EC.presence_of_element_located((By.ID, "gs_displayInboundType")))
         driver.execute_script(
             """
             const s = arguments[0], wanted = arguments[1].toLowerCase();
             for (const o of s.options) {
-                if (o.textContent.trim().toLowerCase() === wanted) {
-                    o.selected = true;
-                    break;
-                }
+                o.selected = o.textContent.trim().toLowerCase() === wanted;
             }
             s.dispatchEvent(new Event('change', {bubbles:true}));
             """,
             sel, value,
         )
-        time.sleep(1)
-        print(f"   Inbound Type '{value}' successfully set ho gaya.")
-    except Exception as e:
-        print(f"   Inbound Type set karte waqt error: {e}")
+        selected_text = driver.execute_script(
+            "return arguments[0].options[arguments[0].selectedIndex].textContent.trim();", sel
+        )
+        if selected_text.strip().lower() == value.lower():
+            print(f"   #gs_displayInboundType ke through set ho gaya (selected: '{selected_text}').")
+            return
+        print(f"   #gs_displayInboundType mila lekin selection confirm nahi hui (got '{selected_text}') - fallback try kar raha hoon...")
+    except Exception as exc:
+        print(f"   #gs_displayInboundType se set nahi hua ({exc}) - fallback try kar raha hoon...")
+
+    # Fallback 1: any native <select> on the page containing this option text.
+    for sel in driver.find_elements(By.TAG_NAME, "select"):
+        try:
+            if not sel.is_displayed():
+                continue
+            opts = [o.text.strip() for o in sel.find_elements(By.TAG_NAME, "option")]
+            if any(o.lower() == value.lower() for o in opts):
+                driver.execute_script(
+                    """
+                    const s = arguments[0], wanted = arguments[1].toLowerCase();
+                    for (const o of s.options) {
+                        o.selected = o.textContent.trim().toLowerCase() === wanted;
+                    }
+                    s.dispatchEvent(new Event('change', {bubbles:true}));
+                    """,
+                    sel, value,
+                )
+                print("   Native select ke through set ho gaya (fallback).")
+                return
+        except Exception:
+            pass
+
+    # Fallback 2: custom dropdown - click the "--- Select ---" toggle for the
+    # Inbound Type column, then click the matching option text.
+    toggles = driver.find_elements(By.XPATH, "//*[contains(text(),'--- Select ---')]")
+    for toggle in toggles:
+        try:
+            if not toggle.is_displayed():
+                continue
+            driver.execute_script("arguments[0].click();", toggle)
+            time.sleep(1)
+            option_el = wait.until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, f"//*[normalize-space(text())='{value}']")
+                )
+            )
+            driver.execute_script("arguments[0].click();", option_el)
+            print("   Custom dropdown ke through set ho gaya (fallback).")
+            return
+        except Exception:
+            continue
+
+    raise RuntimeError(f"Inbound Type filter ('{value}') set nahi kar paaya.")
 
 
 def set_creation_date_preset(driver, wait, preset_label):
-    """Opens Creation Date picker (#gs_createdDate) and picks 'This Month'."""
+    """Opens the Creation Date range picker and clicks a preset like 'This Month'."""
     print(f"5) Creation Date filter ko '{preset_label}' set kar raha hoon...")
+
+    date_field = None
+    # Primary: exact ID confirmed via inspect element (id="gs_createdDate").
     try:
-        date_field = wait.until(EC.presence_of_element_located((By.ID, "gs_createdDate")))
-        driver.execute_script("arguments[0].click();", date_field)
-        time.sleep(1)
+        el = wait.until(EC.presence_of_element_located((By.ID, "gs_createdDate")))
+        if el.is_displayed():
+            date_field = el
+            print("   #gs_createdDate field mil gaya.")
+    except Exception:
+        pass
 
-        preset_el = wait.until(
-            EC.element_to_be_clickable(
-                (By.XPATH, f"//*[normalize-space(text())='{preset_label}']")
-            )
+    if date_field is None:
+        candidates = driver.find_elements(
+            By.XPATH,
+            "//label[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'creation date')]"
+            "/following::input[1]"
         )
-        driver.execute_script("arguments[0].click();", preset_el)
-        time.sleep(1)
-
-        apply_btns = driver.find_elements(
-            By.XPATH, "//button[normalize-space(translate(.,'APPLY','apply'))='apply']"
-        )
-        for btn in apply_btns:
-            if btn.is_displayed():
-                driver.execute_script("arguments[0].click();", btn)
-                time.sleep(1)
+        for el in candidates:
+            if el.is_displayed():
+                date_field = el
                 break
-        print(f"   Creation Date preset '{preset_label}' applied successfully.")
-    except Exception as e:
-        print(f"   Creation Date set karte waqt issue aaya: {e}")
+
+    if date_field is None:
+        # Fallback: any visible input whose id/name hints at "creation" + "date".
+        inputs = driver.find_elements(By.TAG_NAME, "input")
+        for el in inputs:
+            try:
+                meta = " ".join([el.get_attribute("id") or "", el.get_attribute("name") or ""]).lower()
+                if "creation" in meta and "date" in meta and el.is_displayed():
+                    date_field = el
+                    break
+            except Exception:
+                pass
+
+    if date_field is None:
+        raise RuntimeError("Creation Date filter input nahi mila.")
+
+    driver.execute_script("arguments[0].click();", date_field)
+    time.sleep(1)
+
+    preset_el = wait.until(
+        EC.element_to_be_clickable(
+            (By.XPATH, f"//*[normalize-space(text())='{preset_label}']")
+        )
+    )
+    driver.execute_script("arguments[0].click();", preset_el)
+    time.sleep(1)
+
+    # Some date-range pickers need an explicit Apply click after choosing a preset.
+    try:
+        apply_btn = driver.find_element(
+            By.XPATH,
+            "//button[normalize-space(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'))='apply']"
+        )
+        if apply_btn.is_displayed():
+            driver.execute_script("arguments[0].click();", apply_btn)
+            time.sleep(1)
+    except Exception:
+        pass
+
+    print(f"   Creation Date preset '{preset_label}' select ho gaya.")
 
 
 def create_returns_export_request(driver, wait):
-    """Executes full export sequence on Inbound Enquiry screen."""
+    """Full flow: open Inbound Enquiry, set filters, Search, Detail Export."""
     open_inbound_enquiry_screen(driver, wait)
     set_inbound_type_filter(driver, wait, INBOUND_TYPE_FILTER)
     set_creation_date_preset(driver, wait, DATE_PRESET)
 
     print("6) Search button click kar raha hoon...")
-    search_btn = None
-    try:
-        search_btn = wait.until(EC.presence_of_element_located((By.ID, "SearchBtn")))
-    except Exception:
-        search_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(.,'SEARCH','search'),'search')]")))
-    
-    driver.execute_script("arguments[0].click();", search_btn)
-    print("   Data load hone ka wait (8 sec)...")
-    time.sleep(8)
+    search_btn = wait.until(
+        EC.element_to_be_clickable(
+            (By.XPATH, "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'search')]")
+        )
+    )
+    search_btn.click()
+    print("   Data load hone ka wait (10 sec)...")
+    time.sleep(10)
 
     print("7) Detail Export click kar raha hoon...")
+    detail_export_btn = wait.until(
+        EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(),'Detail Export')]")
+        )
+    )
+    detail_export_btn.click()
+    time.sleep(2)
+
+    print("8) Export fields select kar raha hoon...")
+    all_modal_contents = driver.find_elements(By.CSS_SELECTOR, "div.modal-content")
+    modal_content = None
+    for mc in all_modal_contents:
+        if mc.is_displayed() and "Select Field For Export" in mc.text:
+            modal_content = mc
+            break
+
+    if modal_content is None:
+        raise RuntimeError("Select Field For Export modal nahi mila.")
+
+    nested_iframe = modal_content.find_element(By.CSS_SELECTOR, "iframe")
+    driver.switch_to.frame(nested_iframe)
+    time.sleep(1)
+
     try:
-        detail_export_btn = wait.until(EC.element_to_be_clickable((By.ID, "downloadButton")))
-        driver.execute_script("arguments[0].click();", detail_export_btn)
+        select_all_cb = driver.find_element(By.ID, "cb_dynamicFieldGrid")
+        if not select_all_cb.is_selected():
+            driver.execute_script("arguments[0].click();", select_all_cb)
+        print("   Select-all checkbox click ho gaya.")
     except Exception:
-        detail_export_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'Detail Export')]")))
-        driver.execute_script("arguments[0].click();", detail_export_btn)
-    
+        print("   Select-all fallback use kar raha hoon...")
+        all_checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+        for checkbox in all_checkboxes:
+            if not checkbox.is_selected():
+                driver.execute_script("arguments[0].click();", checkbox)
+                time.sleep(0.1)
+
+    print("9) Export click kar raha hoon...")
+    export_btn = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[@title='Export']"))
+    )
+    export_btn.click()
     time.sleep(3)
 
-    print("8) Export fields select-all modal check kar raha hoon...")
-    all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-    for fr in all_iframes:
-        try:
-            driver.switch_to.default_content()
-            driver.switch_to.frame(fr)
-            cb = driver.find_elements(By.ID, "cb_dynamicFieldGrid")
-            if cb:
-                if not cb[0].is_selected():
-                    driver.execute_script("arguments[0].click();", cb[0])
-                print("   Select-all checkbox (#cb_dynamicFieldGrid) selected.")
-                break
-        except Exception:
-            pass
-
-    print("9) Final Export button trigger kar raha hoon...")
-    export_btn = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "//button[contains(@onclick, 'exportData')] | //button[@title='Export']")
-    ))
-    driver.execute_script("arguments[0].click();", export_btn)
-    time.sleep(3)
-
+    driver.switch_to.parent_frame()
     driver.switch_to.default_content()
+    time.sleep(1)
 
 
 # ============================================================
@@ -340,136 +533,334 @@ def create_returns_export_request(driver, wait):
 
 def extract_vinculum_returns():
     if not VINCULUM_USERNAME or not VINCULUM_PASSWORD:
-        raise RuntimeError("GitHub Secrets VINCULUM_USERNAME / VINCULUM_PASSWORD available nahi hain.")
+        raise RuntimeError(
+            "GitHub Actions secrets VINCULUM_USERNAME / VINCULUM_PASSWORD "
+            "available nahi hain."
+        )
 
     driver = build_driver()
     wait = WebDriverWait(driver, 30)
 
     try:
         # ----------------------------------------------------
-        # LOGIN LOGIC WITH POPUP HANDLING
+        # LOGIN (identical flow to vinculum_extract_final.py)
         # ----------------------------------------------------
-        print("1) Login process start ho raha hai...")
+        print("1) Login ho raha hai...")
         driver.get(LOGIN_URL)
-        time.sleep(2)
 
-        def get_login_inputs():
-            driver.switch_to.default_content()
-            u = driver.find_elements(By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']")
-            p = driver.find_elements(By.XPATH, "//input[@type='password' or @name='password' or @id='password']")
-            if u and p:
-                return u[0], p[0]
-            
-            for fr in driver.find_elements(By.TAG_NAME, "iframe"):
+        def first_visible(selectors):
+            for by, value in selectors:
                 try:
-                    driver.switch_to.default_content()
-                    driver.switch_to.frame(fr)
-                    u = driver.find_elements(By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']")
-                    p = driver.find_elements(By.XPATH, "//input[@type='password' or @name='password' or @id='password']")
-                    if u and p:
-                        return u[0], p[0]
+                    for el in driver.find_elements(by, value):
+                        if el.is_displayed() and el.is_enabled():
+                            return el
                 except Exception:
                     pass
-            return None, None
+            return None
 
-        username_el, password_el = None, None
-        deadline = time.time() + 20
-        while time.time() < deadline:
-            username_el, password_el = get_login_inputs()
-            if username_el and password_el:
-                break
+        wait.until(lambda d: (
+            first_visible([
+                (By.ID, "username"), (By.NAME, "username"),
+                (By.ID, "j_username"), (By.NAME, "j_username"),
+                (By.CSS_SELECTOR, "input[type='text']"),
+                (By.CSS_SELECTOR, "input[type='email']")
+            ]) is not None
+            or "selcompanylocationbs.action" in d.current_url.lower()
+        ))
+
+        username_el = first_visible([
+            (By.ID, "username"), (By.NAME, "username"),
+            (By.ID, "j_username"), (By.NAME, "j_username"),
+            (By.CSS_SELECTOR, "input[type='text']"),
+            (By.CSS_SELECTOR, "input[type='email']")
+        ])
+        password_el = first_visible([
+            (By.ID, "password"), (By.NAME, "password"),
+            (By.ID, "j_password"), (By.NAME, "j_password"),
+            (By.CSS_SELECTOR, "input[type='password']")
+        ])
+
+        if username_el and password_el:
+            username_el.clear()
+            username_el.send_keys(VINCULUM_USERNAME)
+            password_el.clear()
+            password_el.send_keys(VINCULUM_PASSWORD)
+
+            login_btn = first_visible([
+                (By.ID, "loginButton"), (By.ID, "login"),
+                (By.NAME, "login"),
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.XPATH, "//button[contains(translate(normalize-space(.),'LOGIN','login'),'login')]"),
+                (By.XPATH, "//input[contains(translate(@value,'LOGIN','login'),'login')]")
+            ])
+            if not login_btn:
+                raise RuntimeError("Login button nahi mila.")
+            driver.execute_script("arguments[0].click();", login_btn)
+        else:
+            print("   Existing Vinculum session detected.")
+
+        login_deadline = time.time() + 30
+        while time.time() < login_deadline:
+            try:
+                alert = driver.switch_to.alert
+                alert.accept()
+                time.sleep(1)
+                continue
+            except Exception:
+                pass
+
+            dialogs = driver.find_elements(By.CSS_SELECTOR, "[role='dialog'], .modal, .ui-dialog, .modal-dialog")
+            for dialog in dialogs:
+                try:
+                    if not dialog.is_displayed():
+                        continue
+                    buttons = dialog.find_elements(By.XPATH, ".//button | .//input[@type='button'] | .//input[@type='submit'] | .//a")
+                    for btn in buttons:
+                        if not btn.is_displayed() or not btn.is_enabled():
+                            continue
+                        label = " ".join(filter(None, [
+                            btn.text, btn.get_attribute("value"),
+                            btn.get_attribute("aria-label"), btn.get_attribute("title")
+                        ])).strip().lower()
+                        if any(k in label for k in ["continue", "ok", "yes", "proceed", "logout other", "terminate", "close"]):
+                            driver.execute_script("arguments[0].click();", btn)
+                            time.sleep(1)
+                            break
+                except Exception:
+                    pass
+
+            try:
+                url_now = driver.current_url.lower()
+                body = driver.find_element(By.TAG_NAME, "body").text.lower()
+                if "selcompanylocationbs.action" in url_now or "pending report" in body or "order enquiry" in body:
+                    print("   Login SUCCESS.")
+                    break
+            except Exception:
+                pass
+
             time.sleep(1)
 
-        if not username_el or not password_el:
-            raise RuntimeError("Login fields (Username/Password) nahi mil paaye.")
-
-        driver.execute_script("arguments[0].scrollIntoView(true);", username_el)
-        driver.execute_script("arguments[0].value = '';", username_el)
-        try:
-            username_el.send_keys(VINCULUM_USERNAME)
-        except Exception:
-            driver.execute_script("arguments[0].value = arguments[1];", username_el, VINCULUM_USERNAME)
-
-        driver.execute_script("arguments[0].value = '';", password_el)
-        try:
-            password_el.send_keys(VINCULUM_PASSWORD)
-        except Exception:
-            driver.execute_script("arguments[0].value = arguments[1];", password_el, VINCULUM_PASSWORD)
-
-        login_btn = driver.find_element(
-            By.XPATH, "//button[contains(translate(.,'LOGIN','login'),'login')] | //input[@type='submit' or @id='loginButton']"
-        )
-        driver.execute_script("arguments[0].click();", login_btn)
-
-        # Handle "Already Logged In / Force Login" Popup
-        handle_login_popups(driver)
-
-        time.sleep(5)
-        print("   Login SUCCESS.")
+        current_report_id = None
 
         # ----------------------------------------------------
-        # EXPORT REQUEST
+        # CREATE RETURNS EXPORT REQUEST
         # ----------------------------------------------------
         create_returns_export_request(driver, wait)
 
         # ----------------------------------------------------
-        # PENDING REPORT POLLING
+        # PENDING REPORT
         # ----------------------------------------------------
-        print("10) Pending Report grid check kar raha hoon...")
+        print("10) Pending Report iframe dhoondh raha hoon...")
 
-        def switch_to_pending_iframe():
+        def find_and_switch_to_pending_iframe():
             driver.switch_to.default_content()
-            for fr in driver.find_elements(By.TAG_NAME, "iframe"):
+            time.sleep(0.5)
+            all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+            for fr in all_iframes:
+                if not fr.is_displayed():
+                    continue
                 try:
                     driver.switch_to.frame(fr)
-                    if "Pending Report" in driver.find_element(By.TAG_NAME, "body").text:
+                    body_text = driver.find_element(By.TAG_NAME, "body").text
+                    if "Pending Report" in body_text or "Report ID" in body_text:
                         return True
                     driver.switch_to.default_content()
                 except Exception:
-                    driver.switch_to.default_content()
+                    try:
+                        driver.switch_to.default_content()
+                    except Exception:
+                        pass
             return False
 
-        switch_to_pending_iframe()
+        found = find_and_switch_to_pending_iframe()
+        if not found:
+            time.sleep(3)
+            found = find_and_switch_to_pending_iframe()
+        if not found:
+            raise RuntimeError("Pending Report iframe nahi mila.")
+
+        time.sleep(2)
+
+        STATUS_WORDS = {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}
+
+        def parse_export_row(row):
+            cells = row.find_elements(By.TAG_NAME, "td")
+            texts = [c.text.strip() for c in cells]
+            status_text = next((t.upper() for t in texts if t.upper() in STATUS_WORDS), None)
+            report_id = next((t for t in texts if t.isdigit() and len(t) >= 4), None)
+            error_msg = ""
+            for t in texts:
+                if not t or t.upper() in STATUS_WORDS or t.isdigit():
+                    continue
+                if REPORT_NAME_MARKER in t.upper().replace(" ", ""):
+                    continue
+                if "/" in t or ":" in t:
+                    continue
+                if len(t) > 8:
+                    error_msg = t
+                    break
+            return texts, report_id, status_text, error_msg
+
+        def read_latest_returns_export():
+            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+            for row in rows:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
+                if REPORT_NAME_MARKER in joined:
+                    texts, report_id, status_text, error_msg = parse_export_row(row)
+                    return row, {"texts": texts, "report_id": report_id, "status": status_text, "error_msg": error_msg}
+            print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
+            return None, None
 
         status_ready = False
         attempt = 0
+        export_retry_count = 0
+        MAX_EXPORT_RETRIES = 10
 
-        while not status_ready and attempt < 20:
+        while not status_ready:
             attempt += 1
-            switch_to_pending_iframe()
-            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+            try:
+                driver.switch_to.default_content()
+                find_and_switch_to_pending_iframe()
+                row, info = read_latest_returns_export()
 
-            for row in rows:
-                row_text = row.text.upper().replace(" ", "")
-                if REPORT_NAME_MARKER in row_text:
-                    if "SUCCESS" in row_text:
-                        print("   Report status SUCCESS confirm ho gaya!")
+                if row is None:
+                    print(f"   Attempt {attempt} - returns export row abhi nahi mila.")
+                else:
+                    report_id = info["report_id"]
+                    status_text = info["status"] or ""
+                    error_msg = info["error_msg"]
+                    print(f"   Attempt {attempt} - Report {report_id} - Status: {status_text}")
+
+                    if status_text == "SUCCESS":
+                        current_report_id = report_id
                         status_ready = True
-                        
-                        download_img = row.find_element(
-                            By.XPATH, ".//img[contains(@src,'DownloadData') or contains(@onclick,'downloadReport')] | .//a | .//*[@title='Download']"
-                        )
-                        files_before = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
-                        driver.execute_script("arguments[0].click();", download_img)
-                        print("   Download button trigger ho gaya.")
+                        print(f"   SUCCESS mila - Report ID: {report_id}")
+                        break
 
-                        downloaded_file = wait_for_download(DOWNLOAD_FOLDER, timeout=120, existing_files=files_before)
-                        if downloaded_file:
-                            shutil.copy2(downloaded_file, OUTPUT_FILE)
-                            generated_at = datetime.utcnow().isoformat() + "Z"
-                            with open(META_FILE, "w") as f:
-                                json.dump({"generatedAt": generated_at}, f)
-                            print(f"SUCCESS: Returns data successfully downloaded & saved to {OUTPUT_FILE}")
-                            return
-                        else:
-                            raise RuntimeError("Download trigger hone ke baad timeout ho gaya.")
-                    elif "ERROR" in row_text:
-                        raise RuntimeError("Pending Report mein status 'ERROR' aagaya hai.")
+                    if status_text == "ERROR":
+                        export_retry_count += 1
+                        detail = error_msg or "Generic Business Error"
+                        print(f"   Report {report_id} ERROR: {detail}. Fresh export retry {export_retry_count}/{MAX_EXPORT_RETRIES}...")
+                        if export_retry_count > MAX_EXPORT_RETRIES:
+                            raise RuntimeError(f"Fresh export retries exhausted. Last Report ID: {report_id}; Error: {detail}")
+                        driver.switch_to.default_content()
+                        time.sleep(1)
+                        create_returns_export_request(driver, wait)
+                        attempt = 0
+                        time.sleep(2)
+                        continue
 
-            print(f"   Attempt {attempt}: Report complete hone ka waiting (10 sec)...")
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                print(f"   Status read issue: {type(exc).__name__}: {exc}")
+
+            try:
+                find_and_switch_to_pending_iframe()
+                driver.execute_script("if (typeof refreshGrid === 'function') { refreshGrid(); }")
+                print("   Pending Report refresh kiya (10 sec interval).")
+            except Exception as exc:
+                print(f"   Refresh issue: {type(exc).__name__}: {exc}")
+
             time.sleep(10)
 
-        raise RuntimeError("Pending Report completion timeout ho gaya.")
+        # ----------------------------------------------------
+        # DOWNLOAD
+        # ----------------------------------------------------
+        print("11) Download click kar raha hoon...")
+
+        files_before_download = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
+
+        rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+        export_rows = []
+        for candidate in rows:
+            cells = candidate.find_elements(By.TAG_NAME, "td")
+            joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
+            if REPORT_NAME_MARKER not in joined:
+                continue
+            _, r_id, r_status, _ = parse_export_row(candidate)
+            export_rows.append((candidate, r_id, r_status))
+
+        row = None
+        matched_report_id = None
+        for candidate, r_id, r_status in export_rows:
+            if r_id == str(current_report_id) and r_status == "SUCCESS":
+                row = candidate
+                matched_report_id = r_id
+                break
+        if row is None:
+            for candidate, r_id, r_status in export_rows:
+                if r_status == "SUCCESS":
+                    row = candidate
+                    matched_report_id = r_id
+                    break
+
+        if row is None:
+            raise RuntimeError(f"SUCCESS returns export row download ke liye nahi mila. Report ID: {current_report_id}")
+
+        print(f"   SUCCESS row confirmed - Report ID: {matched_report_id}")
+
+        download_controls = row.find_elements(
+            By.XPATH,
+            ".//*[@onclick[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'download')]]"
+        )
+        if not download_controls:
+            download_controls = row.find_elements(
+                By.XPATH,
+                ".//*[@onclick and contains(translate(@onclick, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'download')]"
+            )
+        if not download_controls:
+            candidates = row.find_elements(By.CSS_SELECTOR, "label, a, button, input, img, i, span")
+            for el in candidates:
+                try:
+                    meta = " ".join([
+                        el.get_attribute("onclick") or "", el.get_attribute("title") or "",
+                        el.get_attribute("aria-label") or "", el.get_attribute("alt") or "",
+                        el.get_attribute("class") or "",
+                    ]).lower()
+                    if "download" in meta or "downloadreport" in meta:
+                        download_controls.append(el)
+                except Exception:
+                    pass
+
+        if not download_controls:
+            raise RuntimeError("SUCCESS report mein Vinculum download icon/control nahi mila.")
+
+        download_control = download_controls[0]
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", download_control)
+        time.sleep(0.5)
+
+        try:
+            WebDriverWait(driver, 10).until(lambda d: download_control.is_displayed() and download_control.is_enabled())
+        except Exception:
+            pass
+
+        try:
+            download_control.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", download_control)
+
+        print(f"   Download initiated for Report ID: {matched_report_id}")
+
+        print("12) Excel download hone ka wait...")
+        downloaded_file = wait_for_download(DOWNLOAD_FOLDER, timeout=120, existing_files=files_before_download)
+
+        if not downloaded_file:
+            current_files = sorted(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")), key=os.path.getmtime, reverse=True)
+            print("   Download folder files:", [os.path.basename(f) for f in current_files[:10]])
+            raise RuntimeError("Excel download timeout ho gaya.")
+
+        shutil.copy2(downloaded_file, OUTPUT_FILE)
+
+        generated_at = datetime.utcnow().isoformat() + "Z"
+        with open(META_FILE, "w") as f:
+            json.dump({"generatedAt": generated_at}, f)
+
+        print(f"SUCCESS: Latest Returns data saved as: {OUTPUT_FILE}")
+        print(f"Meta file likhi gayi: {META_FILE} (generatedAt: {generated_at})")
+        print(f"Downloaded source file: {os.path.basename(downloaded_file)}")
 
     except Exception as e:
         print("========================================")
