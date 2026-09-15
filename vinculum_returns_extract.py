@@ -14,8 +14,8 @@ import os
 import json
 import re
 
-VINCULUM_USERNAME = os.getenv("kamal.pal", "").strip()
-VINCULUM_PASSWORD = os.getenv("@Kamal12", "")
+VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
+VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "")
 
 import time
 import glob
