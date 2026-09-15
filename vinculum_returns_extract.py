@@ -14,25 +14,11 @@ Order Enquiry:
 7. Wait for Pending Report = SUCCESS (report name contains "InboundEnquiryDetailExport")
 8. Download Excel
 9. Save the latest file as returns.xlsx in the repository root
-
-IMPORTANT: this script was written from screenshots of the Inbound Enquiry
-screen, not by live-testing against it (unlike vinculum_extract_final.py,
-which went through a few rounds of real debugging). The login/download/
-pending-report parts are proven and reused as-is. The navigation and filter
-steps (open_inbound_enquiry_screen, set_inbound_type_filter,
-set_creation_date_this_month) are the parts most likely to need one or two
-rounds of fixing against the real site - if a step fails, the printed
-Hindi-English log line + the GitHub Actions "Upload failure diagnostics"
-screenshot artifact will show exactly which step, same as before.
 """
 
 import os
 import json
 import re
-
-VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
-VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "")
-
 import time
 import glob
 import shutil
@@ -54,27 +40,23 @@ LOGIN_URL = (
     "eRetailWeb/eRetailLogin.action?popup=true"
 )
 
-USERNAME = os.environ["VINCULUM_USERNAME"]
-PASSWORD = os.environ["VINCULUM_PASSWORD"]
+VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
+VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "").strip()
 
 DOWNLOAD_FOLDER = os.path.abspath("data/downloads_returns")
 OUTPUT_FILE = os.path.abspath("returns.xlsx")
 META_FILE = os.path.abspath("returns-meta.json")
 
-# The filter dropdown option and date-range preset to use on the Inbound
-# Enquiry screen, exactly as specified.
+# The filter dropdown option and date-range preset to use on the Inbound Enquiry screen
 INBOUND_TYPE_FILTER = "Against ASN"
 DATE_PRESET = "This Month"
 
-# Report-name marker Vinculum shows in the Pending Report grid for this
-# export (seen as "generateInboundEnquiryDetailExport" in the report list).
-# Matched case/space-insensitively as a substring, same style as the orders
-# script's "ORDERENQUIRYEXPORT" marker.
+# Report-name marker Vinculum shows in the Pending Report grid for this export
 REPORT_NAME_MARKER = "INBOUNDENQUIRYDETAILEXPORT"
 
 
 # ============================================================
-# HELPERS (identical to vinculum_extract_final.py)
+# HELPERS
 # ============================================================
 
 def wait_for_download(folder, timeout=120, existing_files=None):
@@ -109,7 +91,7 @@ def wait_for_download(folder, timeout=120, existing_files=None):
 
 
 def build_driver():
-    """Create Chrome in headless mode for GitHub Actions."""
+    """Create Chrome in headless mode for GitHub Actions with anti-detection args."""
     os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
     for path in glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")):
@@ -135,6 +117,8 @@ def build_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
     driver = webdriver.Chrome(options=options)
 
@@ -157,178 +141,85 @@ def build_driver():
 # ============================================================
 
 def open_inbound_enquiry_screen(driver, wait):
-    """Opens WMS -> Inbound -> Inbound Enquiry via the left sidebar flyout menu.
-
-    The sidebar trigger icon has NO visible "WMS" text on it - that label
-    only appears INSIDE the flyout menu after the correct icon is hovered.
-    So instead of searching for text that doesn't exist yet (the earlier,
-    failing approach), this hovers each icon-like element in the left
-    sidebar strip one at a time and checks whether "Inbound Enquiry" becomes
-    visible anywhere on the page after each hover - whichever icon reveals
-    it is the right one, without needing to know its exact markup/class.
-    """
-    print("2) Left sidebar ke icons try kar raha hoon 'Inbound Enquiry' dhoondhne ke liye...")
-
+    """Opens WMS -> Inbound -> Inbound Enquiry using Real Mouse Click & Iframe Handling."""
+    print("2) 'Inbound Enquiry' screen open kar raha hoon...")
     driver.switch_to.default_content()
 
-    def inbound_enquiry_link_now():
+    def find_inbound_link():
         links = driver.find_elements(
             By.XPATH,
-            "//*[contains(translate(normalize-space(.),"
-            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'inbound enquiry')]"
+            "//*[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'inbound enquiry')]"
         )
         for el in links:
             try:
-                if el.is_displayed() and el.is_enabled():
+                if el.is_displayed():
                     return el
             except Exception:
                 pass
         return None
 
-    # Candidate sidebar icons: any visible, icon-sized element sitting in the
-    # left ~90px strip of the viewport (matches the vertical icon rail seen
-    # in the screenshots).
+    # Step 1: Left sidebar hover to reveal menu
     candidates = driver.find_elements(By.XPATH, "//div | //a | //span | //i | //button")
-    sidebar_icons = []
     for el in candidates:
         try:
-            if not el.is_displayed():
-                continue
-            rect = el.rect
-            if rect["x"] <= 90 and 10 <= rect["width"] <= 90 and 10 <= rect["height"] <= 90:
-                sidebar_icons.append(el)
-        except Exception:
-            pass
-
-    print(f"   {len(sidebar_icons)} sidebar icon-candidates mile, hover karke try kar raha hoon...")
-
-    inbound_enquiry_link = None
-    for icon in sidebar_icons:
-        try:
-            ActionChains(driver).move_to_element(icon).perform()
+            if el.is_displayed() and el.rect["x"] <= 90:
+                ActionChains(driver).move_to_element(el).perform()
+                time.sleep(0.3)
+                link = find_inbound_link()
+                if link:
+                    break
         except Exception:
             continue
-        time.sleep(0.6)
-        inbound_enquiry_link = inbound_enquiry_link_now()
-        if inbound_enquiry_link:
-            print("   Sahi sidebar icon mil gaya (hover ke baad 'Inbound Enquiry' dikha).")
-            break
 
-    if inbound_enquiry_link is None:
-        # Fall back to clicking each icon in case the menu needs a click
-        # rather than (or in addition to) a hover to stay open.
-        print("   Hover se nahi mila, ab click karke try kar raha hoon...")
-        for icon in sidebar_icons:
-            try:
-                driver.execute_script("arguments[0].click();", icon)
-            except Exception:
-                continue
-            time.sleep(0.6)
-            inbound_enquiry_link = inbound_enquiry_link_now()
-            if inbound_enquiry_link:
-                print("   Sahi sidebar icon mil gaya (click ke baad 'Inbound Enquiry' dikha).")
-                break
+    inbound_link = find_inbound_link()
+    if not inbound_link:
+        raise RuntimeError("'Inbound Enquiry' menu link screen par nahi mila.")
 
-    if inbound_enquiry_link is None:
-        raise RuntimeError(
-            f"'Inbound Enquiry' link kisi bhi sidebar icon (total {len(sidebar_icons)} try kiye) "
-            "hover/click se nahi mila."
-        )
+    # Step 2: Real Native Click
+    try:
+        ActionChains(driver).move_to_element(inbound_link).click().perform()
+    except Exception:
+        driver.execute_script("arguments[0].click();", inbound_link)
 
-    windows_before_click = driver.window_handles
-    driver.execute_script("arguments[0].click();", inbound_enquiry_link)
-    print("   'Inbound Enquiry' click ho gaya.")
-    time.sleep(2)
+    print("   'Inbound Enquiry' menu par native click ho gaya. Screen load hone ka wait...")
+    time.sleep(5)
 
-    # If the click opened a new browser tab/window (rather than loading into
-    # an iframe of the current one), switch to it - everything we search for
-    # afterward would otherwise silently look in the wrong window.
-    windows_after_click = driver.window_handles
-    if len(windows_after_click) > len(windows_before_click):
-        new_window = [w for w in windows_after_click if w not in windows_before_click][0]
-        driver.switch_to.window(new_window)
-        print(f"   Naya browser tab/window khula tha ({len(windows_after_click)} total) - switch kar diya.")
-
-    # Find which document context (top-level page, or one of possibly several
-    # iframes, possibly added to the DOM with some delay) actually contains
-    # the Inbound Enquiry screen's filter controls. A single check right
-    # after a fixed sleep wasn't enough time on slower CI runners, so this
-    # polls repeatedly (checking top-level, then every iframe, each pass)
-    # until the markers show up or the timeout is hit.
-    def screen_markers_present():
-        try:
-            return bool(driver.find_elements(By.ID, "gs_displayInboundType")) or \
-                   bool(driver.find_elements(By.ID, "gs_createdDate"))
-        except Exception:
-            return False
-
-    found_context = False
-    deadline = time.time() + 25
-    attempt = 0
-    while time.time() < deadline and not found_context:
-        attempt += 1
+    # Step 3: Switch to the correct iframe containing 'gs_displayInboundType'
+    deadline = time.time() + 30
+    while time.time() < deadline:
         driver.switch_to.default_content()
-        if screen_markers_present():
-            found_context = True
-            print(f"   (attempt {attempt}) Inbound Enquiry screen top-level page par mil gaya.")
-            break
+        if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
+            print("   Inbound Enquiry screen main page par load ho gayi.")
+            return
 
         all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
         for fr in all_iframes:
             try:
-                if not fr.is_displayed():
-                    continue
                 driver.switch_to.default_content()
                 driver.switch_to.frame(fr)
-                if screen_markers_present():
-                    found_context = True
-                    print(f"   (attempt {attempt}) Inbound Enquiry screen iframe ke andar mil gaya ({len(all_iframes)} iframe(s) the).")
-                    break
-
-                # Also check one level of nested iframe (iframe inside this
-                # iframe) - the Order Enquiry screen needed this same nesting.
-                nested_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-                for nfr in nested_iframes:
-                    try:
-                        if not nfr.is_displayed():
-                            continue
-                        driver.switch_to.frame(nfr)
-                        if screen_markers_present():
-                            found_context = True
-                            print(f"   (attempt {attempt}) Inbound Enquiry screen NESTED iframe ke andar mil gaya.")
-                            break
-                        driver.switch_to.parent_frame()
-                    except Exception:
-                        try:
-                            driver.switch_to.parent_frame()
-                        except Exception:
-                            pass
-                if found_context:
-                    break
+                if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
+                    print("   Inbound Enquiry screen IFRAME ke andar mil gayi.")
+                    return
+                
+                # Check nested iframe
+                nested = driver.find_elements(By.TAG_NAME, "iframe")
+                for nfr in nested:
+                    driver.switch_to.frame(nfr)
+                    if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
+                        print("   Inbound Enquiry screen NESTED IFRAME ke andar mil gayi.")
+                        return
+                    driver.switch_to.parent_frame()
             except Exception:
-                continue
+                pass
+        time.sleep(2)
 
-        if not found_context:
-            time.sleep(1)
-
-    if not found_context:
-        driver.switch_to.default_content()
-        print(f"   {attempt} attempts ke baad bhi screen markers nahi mile; top-level page par hi aage badh raha hoon.")
-        try:
-            print(f"   [debug] Current URL: {driver.current_url}")
-            print(f"   [debug] Open windows/tabs: {len(driver.window_handles)}")
-            print(f"   [debug] iframe count (top-level): {len(driver.find_elements(By.TAG_NAME, 'iframe'))}")
-            body_text = driver.find_element(By.TAG_NAME, "body").text
-            print(f"   [debug] Page body snippet (first 400 chars): {body_text[:400]!r}")
-        except Exception as exc:
-            print(f"   [debug] Diagnostics collection failed: {exc}")
+    raise RuntimeError("Inbound Enquiry screen (gs_displayInboundType) load hone mein timeout ho gaya.")
 
 
 def set_inbound_type_filter(driver, wait, value):
     """Sets the Inbound Type filter dropdown to the given value (e.g. 'Against ASN')."""
     print(f"4) Inbound Type filter ko '{value}' set kar raha hoon...")
 
-    # Primary: exact ID confirmed via inspect element (id="gs_displayInboundType").
     try:
         sel = wait.until(EC.presence_of_element_located((By.ID, "gs_displayInboundType")))
         driver.execute_script(
@@ -347,11 +238,9 @@ def set_inbound_type_filter(driver, wait, value):
         if selected_text.strip().lower() == value.lower():
             print(f"   #gs_displayInboundType ke through set ho gaya (selected: '{selected_text}').")
             return
-        print(f"   #gs_displayInboundType mila lekin selection confirm nahi hui (got '{selected_text}') - fallback try kar raha hoon...")
     except Exception as exc:
         print(f"   #gs_displayInboundType se set nahi hua ({exc}) - fallback try kar raha hoon...")
 
-    # Fallback 1: any native <select> on the page containing this option text.
     for sel in driver.find_elements(By.TAG_NAME, "select"):
         try:
             if not sel.is_displayed():
@@ -373,26 +262,6 @@ def set_inbound_type_filter(driver, wait, value):
         except Exception:
             pass
 
-    # Fallback 2: custom dropdown - click the "--- Select ---" toggle for the
-    # Inbound Type column, then click the matching option text.
-    toggles = driver.find_elements(By.XPATH, "//*[contains(text(),'--- Select ---')]")
-    for toggle in toggles:
-        try:
-            if not toggle.is_displayed():
-                continue
-            driver.execute_script("arguments[0].click();", toggle)
-            time.sleep(1)
-            option_el = wait.until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, f"//*[normalize-space(text())='{value}']")
-                )
-            )
-            driver.execute_script("arguments[0].click();", option_el)
-            print("   Custom dropdown ke through set ho gaya (fallback).")
-            return
-        except Exception:
-            continue
-
     raise RuntimeError(f"Inbound Type filter ('{value}') set nahi kar paaya.")
 
 
@@ -401,7 +270,6 @@ def set_creation_date_preset(driver, wait, preset_label):
     print(f"5) Creation Date filter ko '{preset_label}' set kar raha hoon...")
 
     date_field = None
-    # Primary: exact ID confirmed via inspect element (id="gs_createdDate").
     try:
         el = wait.until(EC.presence_of_element_located((By.ID, "gs_createdDate")))
         if el.is_displayed():
@@ -422,18 +290,6 @@ def set_creation_date_preset(driver, wait, preset_label):
                 break
 
     if date_field is None:
-        # Fallback: any visible input whose id/name hints at "creation" + "date".
-        inputs = driver.find_elements(By.TAG_NAME, "input")
-        for el in inputs:
-            try:
-                meta = " ".join([el.get_attribute("id") or "", el.get_attribute("name") or ""]).lower()
-                if "creation" in meta and "date" in meta and el.is_displayed():
-                    date_field = el
-                    break
-            except Exception:
-                pass
-
-    if date_field is None:
         raise RuntimeError("Creation Date filter input nahi mila.")
 
     driver.execute_script("arguments[0].click();", date_field)
@@ -447,7 +303,6 @@ def set_creation_date_preset(driver, wait, preset_label):
     driver.execute_script("arguments[0].click();", preset_el)
     time.sleep(1)
 
-    # Some date-range pickers need an explicit Apply click after choosing a preset.
     try:
         apply_btn = driver.find_element(
             By.XPATH,
@@ -508,7 +363,6 @@ def create_returns_export_request(driver, wait):
             driver.execute_script("arguments[0].click();", select_all_cb)
         print("   Select-all checkbox click ho gaya.")
     except Exception:
-        print("   Select-all fallback use kar raha hoon...")
         all_checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
         for checkbox in all_checkboxes:
             if not checkbox.is_selected():
@@ -534,8 +388,7 @@ def create_returns_export_request(driver, wait):
 def extract_vinculum_returns():
     if not VINCULUM_USERNAME or not VINCULUM_PASSWORD:
         raise RuntimeError(
-            "GitHub Actions secrets VINCULUM_USERNAME / VINCULUM_PASSWORD "
-            "available nahi hain."
+            "GitHub Actions secrets VINCULUM_USERNAME / VINCULUM_PASSWORD available nahi hain."
         )
 
     driver = build_driver()
@@ -543,7 +396,7 @@ def extract_vinculum_returns():
 
     try:
         # ----------------------------------------------------
-        # LOGIN (identical flow to vinculum_extract_final.py)
+        # LOGIN
         # ----------------------------------------------------
         print("1) Login ho raha hai...")
         driver.get(LOGIN_URL)
@@ -710,7 +563,6 @@ def extract_vinculum_returns():
                 if REPORT_NAME_MARKER in joined:
                     texts, report_id, status_text, error_msg = parse_export_row(row)
                     return row, {"texts": texts, "report_id": report_id, "status": status_text, "error_msg": error_msg}
-            print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
             return None, None
 
         status_ready = False
