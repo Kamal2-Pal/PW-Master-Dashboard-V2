@@ -1,15 +1,16 @@
 """
 Vinculum Returns (Inbound Enquiry) Extractor - GitHub Actions version
 ----------------------------------------------------------------------
-Fully updated based on exact DOM DOM attributes from user screenshots:
-1. Direct JS navigation via openScreen()
-2. Creation Date = "This Month"
-3. Inbound Type = "Against ASN" (#gs_displayInboundType)
-4. Search via #SearchBtn
-5. Detail Export via #downloadButton
-6. Select-all fields via #cb_dynamicFieldGrid
-7. Export trigger via exportData()
-8. Download report named 'generateInbound' from Pending Report grid
+Fully updated with:
+1. Robust Login (bypassing ElementNotInteractableException via JS & clickable waits)
+2. Direct JS navigation via openScreen()
+3. Creation Date = "This Month"
+4. Inbound Type = "Against ASN" (#gs_displayInboundType)
+5. Search via #SearchBtn
+6. Detail Export via #downloadButton
+7. Select-all fields via #cb_dynamicFieldGrid
+8. Export trigger via exportData()
+9. Download report named 'generateInbound' from Pending Report grid
 """
 
 import os
@@ -135,11 +136,10 @@ def build_driver():
 # ============================================================
 
 def open_inbound_enquiry_screen(driver, wait):
-    """Opens WMS -> Inbound -> Inbound Enquiry via JS or Click (SS 2 & 3)."""
+    """Opens WMS -> Inbound -> Inbound Enquiry via JS or Click."""
     print("2) 'Inbound Enquiry' screen open kar raha hoon...")
     driver.switch_to.default_content()
 
-    # Direct JS invocation using exact signature from SS 3
     try:
         driver.execute_script("openScreen('Inbound Enquiry', 'inboundEnquiryBS', 'fa fa-arrow-circle-right');")
         print("   Direct openScreen() JS function execute ho gaya.")
@@ -176,7 +176,7 @@ def open_inbound_enquiry_screen(driver, wait):
 
 
 def set_inbound_type_filter(driver, wait, value):
-    """Sets the Inbound Type dropdown (#gs_displayInboundType) (SS 5)."""
+    """Sets the Inbound Type dropdown (#gs_displayInboundType)."""
     print(f"4) Inbound Type filter ko '{value}' set kar raha hoon...")
     sel = wait.until(EC.presence_of_element_located((By.ID, "gs_displayInboundType")))
     driver.execute_script(
@@ -196,7 +196,7 @@ def set_inbound_type_filter(driver, wait, value):
 
 
 def set_creation_date_preset(driver, wait, preset_label):
-    """Opens Creation Date picker (#gs_createdDate) and picks 'This Month' (SS 4)."""
+    """Opens Creation Date picker (#gs_createdDate) and picks 'This Month'."""
     print(f"5) Creation Date filter ko '{preset_label}' set kar raha hoon...")
     date_field = wait.until(EC.presence_of_element_located((By.ID, "gs_createdDate")))
     driver.execute_script("arguments[0].click();", date_field)
@@ -222,24 +222,21 @@ def set_creation_date_preset(driver, wait, preset_label):
 
 
 def create_returns_export_request(driver, wait):
-    """Full export trigger flow based on SS 4 to SS 9."""
+    """Full export trigger flow."""
     open_inbound_enquiry_screen(driver, wait)
     set_creation_date_preset(driver, wait, DATE_PRESET)
     set_inbound_type_filter(driver, wait, INBOUND_TYPE_FILTER)
 
-    # SS 6: Search button #SearchBtn
     print("6) Search button (#SearchBtn) click kar raha hoon...")
     search_btn = wait.until(EC.element_to_be_clickable((By.ID, "SearchBtn")))
     driver.execute_script("arguments[0].click();", search_btn)
     time.sleep(8)
 
-    # SS 7: Detail Export button #downloadButton
     print("7) Detail Export (#downloadButton) click kar raha hoon...")
     detail_export_btn = wait.until(EC.element_to_be_clickable((By.ID, "downloadButton")))
     driver.execute_script("arguments[0].click();", detail_export_btn)
     time.sleep(3)
 
-    # SS 8: Select field modal & #cb_dynamicFieldGrid
     print("8) Export fields modal handle kar raha hoon...")
     all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
     for fr in all_iframes:
@@ -255,7 +252,6 @@ def create_returns_export_request(driver, wait):
         except Exception:
             pass
 
-    # SS 9: Export button calling exportData()
     print("9) Export button click kar raha hoon...")
     export_btn = wait.until(EC.element_to_be_clickable(
         (By.XPATH, "//button[contains(@onclick, 'exportData')] | //button[@title='Export']")
@@ -281,13 +277,18 @@ def extract_vinculum_returns():
         print("1) Login ho raha hai...")
         driver.get(LOGIN_URL)
 
-        # Login logic
-        username_el = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text'], input[name='username']")))
-        password_el = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
-
-        username_el.clear()
+        # FIXED LOGIN LOGIC (Prevents ElementNotInteractableException)
+        username_el = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='username'], input[type='text']"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView(true);", username_el)
+        driver.execute_script("arguments[0].value = '';", username_el)
         username_el.send_keys(VINCULUM_USERNAME)
-        password_el.clear()
+
+        password_el = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='password'], input[type='password']"))
+        )
+        driver.execute_script("arguments[0].value = '';", password_el)
         password_el.send_keys(VINCULUM_PASSWORD)
 
         login_btn = driver.find_element(By.XPATH, "//button[contains(translate(.,'LOGIN','login'),'login')] | //input[@type='submit']")
@@ -299,7 +300,7 @@ def extract_vinculum_returns():
         # Create Export Request
         create_returns_export_request(driver, wait)
 
-        # Pending Report Monitor (SS 10)
+        # Pending Report Monitor
         print("10) Pending Report mein generateInbound report check kar raha hoon...")
 
         def switch_to_pending_iframe():
@@ -332,13 +333,11 @@ def extract_vinculum_returns():
                         print("   'generateInbound' status SUCCESS mil gaya!")
                         status_ready = True
                         
-                        # SS 10: Download image / button click
                         download_img = row.find_element(By.XPATH, ".//img[contains(@src,'DownloadData') or contains(@onclick,'downloadReport')] | .//a")
                         files_before = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
                         driver.execute_script("arguments[0].click();", download_img)
                         print("   Download button click kar diya.")
 
-                        # Wait for download completion
                         downloaded_file = wait_for_download(DOWNLOAD_FOLDER, timeout=120, existing_files=files_before)
                         if downloaded_file:
                             shutil.copy2(downloaded_file, OUTPUT_FILE)
