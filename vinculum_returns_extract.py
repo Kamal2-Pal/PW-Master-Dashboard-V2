@@ -3,7 +3,7 @@ Vinculum Returns (Inbound Enquiry) Extractor - GitHub Actions version
 ----------------------------------------------------------------------
 Fully updated and robust flow incorporating all UI screenshot configurations:
 1. Multi-fallback robust login (handles frames, direct JS value injection & explicit waits)
-2. Direct JS / Navigation link trigger for Inbound Enquiry
+2. Safe sidebar/JS frame navigation for Inbound Enquiry (avoids openScreen missing errors)
 3. Inbound Type filter = "Against ASN" (#gs_displayInboundType)
 4. Creation Date filter = "This Month" (#gs_createdDate)
 5. Search & Detail Export modal field select (#cb_dynamicFieldGrid)
@@ -135,43 +135,72 @@ def build_driver():
 # ============================================================
 
 def open_inbound_enquiry_screen(driver, wait):
-    """Opens WMS -> Inbound -> Inbound Enquiry via JS or Click."""
+    """Opens Inbound Enquiry screen by safely toggling sidebar menus or invoking JS."""
     print("2) 'Inbound Enquiry' screen open kar raha hoon...")
     driver.switch_to.default_content()
 
+    # Safe JavaScript navigation check across window frames
     try:
-        driver.execute_script("openScreen('Inbound Enquiry', 'inboundEnquiryBS', 'fa fa-arrow-circle-right');")
-        print("   Direct openScreen() JS function execute ho gaya.")
+        driver.execute_script("""
+            if (typeof openScreen === 'function') {
+                openScreen('Inbound Enquiry', 'inboundEnquiryBS', 'fa fa-arrow-circle-right');
+            } else if (window.parent && typeof window.parent.openScreen === 'function') {
+                window.parent.openScreen('Inbound Enquiry', 'inboundEnquiryBS', 'fa fa-arrow-circle-right');
+            }
+        """)
+        time.sleep(3)
     except Exception as e:
-        print(f"   openScreen JS call fail hua: {e}. Sidebar element click try kar raha hoon...")
-        link = wait.until(EC.element_to_be_clickable((
-            By.XPATH, "//*[contains(translate(normalize-space(.),'INBOUND ENQUIRY','inbound enquiry'),'inbound enquiry')]"
-        )))
-        driver.execute_script("arguments[0].click();", link)
+        print(f"   Direct openScreen call skipped: {e}")
 
-    time.sleep(4)
-
-    # Context Switch Verification
-    deadline = time.time() + 30
-    while time.time() < deadline:
+    # Check if screen loaded directly
+    def is_screen_loaded():
         driver.switch_to.default_content()
         if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
-            print("   Inbound Enquiry screen top-level frame par load ho gayi.")
-            return
-
-        all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        for fr in all_iframes:
+            return True
+        for fr in driver.find_elements(By.TAG_NAME, "iframe"):
             try:
                 driver.switch_to.default_content()
                 driver.switch_to.frame(fr)
                 if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
-                    print("   Inbound Enquiry screen IFRAME ke andar mil gayi.")
-                    return
+                    return True
             except Exception:
                 pass
-        time.sleep(2)
+        return False
 
-    print("   Warning: Inbound Enquiry screen markers check timeout hua, default flow continue ho raha hai.")
+    if is_screen_loaded():
+        print("   Inbound Enquiry screen verify ho gayi.")
+        return
+
+    # Fallback: UI Navigation (Hover/Click Sidebar)
+    print("   Sidebar menu expansion try kar raha hoon...")
+    driver.switch_to.default_content()
+
+    # Expand submenus
+    sidebar_elements = driver.find_elements(By.XPATH, "//a | //li | //span | //i")
+    for el in sidebar_elements:
+        try:
+            txt = el.text.strip().lower()
+            if "wms" in txt or "inbound" in txt or "enquiry" in txt:
+                driver.execute_script("arguments[0].click();", el)
+                time.sleep(0.5)
+        except Exception:
+            pass
+
+    # Try clicking the explicit link
+    try:
+        target_link = wait.until(EC.presence_of_element_located((
+            By.XPATH, "//*[contains(translate(normalize-space(.),'INBOUND ENQUIRY','inbound enquiry'),'inbound enquiry')]"
+        )))
+        driver.execute_script("arguments[0].click();", target_link)
+        time.sleep(4)
+    except Exception as e:
+        print(f"   Target link click issue: {e}")
+
+    # Final Context Verification
+    if is_screen_loaded():
+        print("   Inbound Enquiry screen verify ho gayi.")
+    else:
+        print("   Warning: Screen markers timeout hue, script further execution try karegi.")
 
 
 def set_inbound_type_filter(driver, wait, value):
@@ -292,13 +321,12 @@ def extract_vinculum_returns():
 
     try:
         # ----------------------------------------------------
-        # FIXED LOGIN LOGIC (Avoids ElementNotInteractableException)
+        # LOGIN LOGIC
         # ----------------------------------------------------
         print("1) Login process start ho raha hai...")
         driver.get(LOGIN_URL)
         time.sleep(2)
 
-        # Look for login elements across top-level and potential frames
         def get_login_inputs():
             driver.switch_to.default_content()
             u = driver.find_elements(By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']")
@@ -329,7 +357,6 @@ def extract_vinculum_returns():
         if not username_el or not password_el:
             raise RuntimeError("Login fields (Username/Password) nahi mil paaye.")
 
-        # Safe Value Injection via JS & Send Keys
         driver.execute_script("arguments[0].scrollIntoView(true);", username_el)
         driver.execute_script("arguments[0].value = '';", username_el)
         try:
@@ -343,7 +370,6 @@ def extract_vinculum_returns():
         except Exception:
             driver.execute_script("arguments[0].value = arguments[1];", password_el, VINCULUM_PASSWORD)
 
-        # Login Click
         login_btn = driver.find_element(
             By.XPATH, "//button[contains(translate(.,'LOGIN','login'),'login')] | //input[@type='submit' or @id='loginButton']"
         )
