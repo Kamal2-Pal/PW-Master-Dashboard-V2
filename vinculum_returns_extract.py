@@ -237,15 +237,13 @@ def open_inbound_enquiry_screen(driver, wait):
 
     driver.execute_script("arguments[0].click();", inbound_enquiry_link)
     print("   'Inbound Enquiry' click ho gaya.")
-    time.sleep(4)
 
     # Find which document context (top-level page, or one of possibly several
-    # iframes) actually contains the Inbound Enquiry screen's filter controls.
-    # Guessing by the iframe's src attribute (old approach) failed - it
-    # didn't contain the word "inbound", so the real iframe was missed and
-    # the code fell back to top-level, where #gs_displayInboundType doesn't
-    # exist, causing a 30s timeout. This checks each context directly for
-    # that element instead of guessing from the src URL.
+    # iframes, possibly added to the DOM with some delay) actually contains
+    # the Inbound Enquiry screen's filter controls. A single check right
+    # after a fixed sleep wasn't enough time on slower CI runners, so this
+    # polls repeatedly (checking top-level, then every iframe, each pass)
+    # until the markers show up or the timeout is hit.
     def screen_markers_present():
         try:
             return bool(driver.find_elements(By.ID, "gs_displayInboundType")) or \
@@ -253,13 +251,18 @@ def open_inbound_enquiry_screen(driver, wait):
         except Exception:
             return False
 
-    driver.switch_to.default_content()
-    if screen_markers_present():
-        print("   Inbound Enquiry screen top-level page par hi mil gaya (koi iframe switch nahi chahiye).")
-    else:
-        found_in_iframe = False
+    found_context = False
+    deadline = time.time() + 25
+    attempt = 0
+    while time.time() < deadline and not found_context:
+        attempt += 1
+        driver.switch_to.default_content()
+        if screen_markers_present():
+            found_context = True
+            print(f"   (attempt {attempt}) Inbound Enquiry screen top-level page par mil gaya.")
+            break
+
         all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        print(f"   Top-level par nahi mila, {len(all_iframes)} iframe(s) check kar raha hoon...")
         for fr in all_iframes:
             try:
                 if not fr.is_displayed():
@@ -267,15 +270,39 @@ def open_inbound_enquiry_screen(driver, wait):
                 driver.switch_to.default_content()
                 driver.switch_to.frame(fr)
                 if screen_markers_present():
-                    found_in_iframe = True
-                    print("   Inbound Enquiry screen is iframe ke andar mil gaya.")
+                    found_context = True
+                    print(f"   (attempt {attempt}) Inbound Enquiry screen iframe ke andar mil gaya ({len(all_iframes)} iframe(s) the).")
+                    break
+
+                # Also check one level of nested iframe (iframe inside this
+                # iframe) - the Order Enquiry screen needed this same nesting.
+                nested_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                for nfr in nested_iframes:
+                    try:
+                        if not nfr.is_displayed():
+                            continue
+                        driver.switch_to.frame(nfr)
+                        if screen_markers_present():
+                            found_context = True
+                            print(f"   (attempt {attempt}) Inbound Enquiry screen NESTED iframe ke andar mil gaya.")
+                            break
+                        driver.switch_to.parent_frame()
+                    except Exception:
+                        try:
+                            driver.switch_to.parent_frame()
+                        except Exception:
+                            pass
+                if found_context:
                     break
             except Exception:
                 continue
 
-        if not found_in_iframe:
-            driver.switch_to.default_content()
-            print("   Kisi bhi iframe mein screen markers nahi mile; top-level page par hi aage badh raha hoon.")
+        if not found_context:
+            time.sleep(1)
+
+    if not found_context:
+        driver.switch_to.default_content()
+        print(f"   {attempt} attempts ke baad bhi screen markers nahi mile; top-level page par hi aage badh raha hoon.")
 
 
 def set_inbound_type_filter(driver, wait, value):
