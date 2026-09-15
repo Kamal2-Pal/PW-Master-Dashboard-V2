@@ -1,14 +1,14 @@
 """
 Vinculum Returns (Inbound Enquiry) Extractor - GitHub Actions version
 ----------------------------------------------------------------------
-Fully updated and robust flow incorporating all UI screenshot configurations:
-1. Multi-fallback robust login (handles frames, direct JS value injection & explicit waits)
-2. Safe sidebar/JS frame navigation for Inbound Enquiry (avoids openScreen missing errors)
-3. Inbound Type filter = "Against ASN" (#gs_displayInboundType)
-4. Creation Date filter = "This Month" (#gs_createdDate)
-5. Search & Detail Export modal field select (#cb_dynamicFieldGrid)
-6. Export trigger & Pending Report polling (matching GENERATEINBOUND)
-7. Report download & Excel metadata update
+1. Active session popup (Force Login / Alert / OK button) auto-handling
+2. Multi-frame fallback for username/password login
+3. Safe Inbound Enquiry screen navigation
+4. Inbound Type filter = "Against ASN" (#gs_displayInboundType)
+5. Creation Date filter = "This Month" (#gs_createdDate)
+6. Search & Detail Export modal field select (#cb_dynamicFieldGrid)
+7. Export trigger & Pending Report polling (matching GENERATEINBOUND)
+8. Report download & Excel metadata update
 """
 
 import os
@@ -130,16 +130,51 @@ def build_driver():
     return driver
 
 
+def handle_login_popups(driver):
+    """Handles browser alert popups AND HTML modal popups (Force Login / Already Logged in)."""
+    time.sleep(2)
+    # 1. Check Native JS Alert
+    try:
+        alert = driver.switch_to.alert
+        alert_text = alert.text
+        print(f"   Browser Alert detect hua: '{alert_text}'. Accept (OK) kar raha hoon...")
+        alert.accept()
+        time.sleep(2)
+    except Exception:
+        pass
+
+    # 2. Check HTML Popups / Modal Buttons (OK, Yes, Continue, Force Login)
+    driver.switch_to.default_content()
+    popup_buttons = driver.find_elements(
+        By.XPATH,
+        "//button[contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'ok') or "
+        "contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'yes') or "
+        "contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'force') or "
+        "contains(translate(.,'OKYESCONTINUEFORCE','okyescontinueforce'),'continue')] | "
+        "//input[@type='button' or @type='submit'][contains(translate(@value,'OKYESCONTINUEFORCE','okyescontinueforce'),'ok') or "
+        "contains(translate(@value,'OKYESCONTINUEFORCE','okyescontinueforce'),'yes')]"
+    )
+    for btn in popup_buttons:
+        try:
+            if btn.is_displayed():
+                print("   HTML Login Popup button detect hua. Click kar raha hoon...")
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(2)
+                break
+        except Exception:
+            pass
+
+
 # ============================================================
 # INBOUND ENQUIRY NAVIGATION & FILTERS
 # ============================================================
 
 def open_inbound_enquiry_screen(driver, wait):
-    """Opens Inbound Enquiry screen by safely toggling sidebar menus or invoking JS."""
+    """Opens Inbound Enquiry screen safely."""
     print("2) 'Inbound Enquiry' screen open kar raha hoon...")
     driver.switch_to.default_content()
 
-    # Safe JavaScript navigation check across window frames
+    # Try JS call
     try:
         driver.execute_script("""
             if (typeof openScreen === 'function') {
@@ -149,11 +184,10 @@ def open_inbound_enquiry_screen(driver, wait):
             }
         """)
         time.sleep(3)
-    except Exception as e:
-        print(f"   Direct openScreen call skipped: {e}")
+    except Exception:
+        pass
 
-    # Check if screen loaded directly
-    def is_screen_loaded():
+    def get_inbound_frame():
         driver.switch_to.default_content()
         if len(driver.find_elements(By.ID, "gs_displayInboundType")) > 0:
             return True
@@ -167,17 +201,14 @@ def open_inbound_enquiry_screen(driver, wait):
                 pass
         return False
 
-    if is_screen_loaded():
+    if get_inbound_frame():
         print("   Inbound Enquiry screen verify ho gayi.")
         return
 
-    # Fallback: UI Navigation (Hover/Click Sidebar)
-    print("   Sidebar menu expansion try kar raha hoon...")
+    # Sidebar Click Navigation Fallback
+    print("   Sidebar menu fallback navigation try kar raha hoon...")
     driver.switch_to.default_content()
-
-    # Expand submenus
-    sidebar_elements = driver.find_elements(By.XPATH, "//a | //li | //span | //i")
-    for el in sidebar_elements:
+    for el in driver.find_elements(By.XPATH, "//a | //li | //span"):
         try:
             txt = el.text.strip().lower()
             if "wms" in txt or "inbound" in txt or "enquiry" in txt:
@@ -186,7 +217,6 @@ def open_inbound_enquiry_screen(driver, wait):
         except Exception:
             pass
 
-    # Try clicking the explicit link
     try:
         target_link = wait.until(EC.presence_of_element_located((
             By.XPATH, "//*[contains(translate(normalize-space(.),'INBOUND ENQUIRY','inbound enquiry'),'inbound enquiry')]"
@@ -194,13 +224,9 @@ def open_inbound_enquiry_screen(driver, wait):
         driver.execute_script("arguments[0].click();", target_link)
         time.sleep(4)
     except Exception as e:
-        print(f"   Target link click issue: {e}")
+        print(f"   Target link search warning: {e}")
 
-    # Final Context Verification
-    if is_screen_loaded():
-        print("   Inbound Enquiry screen verify ho gayi.")
-    else:
-        print("   Warning: Screen markers timeout hue, script further execution try karegi.")
+    get_inbound_frame()
 
 
 def set_inbound_type_filter(driver, wait, value):
@@ -263,13 +289,13 @@ def create_returns_export_request(driver, wait):
     set_creation_date_preset(driver, wait, DATE_PRESET)
 
     print("6) Search button click kar raha hoon...")
+    search_btn = None
     try:
-        search_btn = wait.until(EC.element_to_be_clickable((By.ID, "SearchBtn")))
-        driver.execute_script("arguments[0].click();", search_btn)
+        search_btn = wait.until(EC.presence_of_element_located((By.ID, "SearchBtn")))
     except Exception:
-        search_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(translate(.,'SEARCH','search'),'search')]")))
-        driver.execute_script("arguments[0].click();", search_btn)
+        search_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(.,'SEARCH','search'),'search')]")))
     
+    driver.execute_script("arguments[0].click();", search_btn)
     print("   Data load hone ka wait (8 sec)...")
     time.sleep(8)
 
@@ -321,7 +347,7 @@ def extract_vinculum_returns():
 
     try:
         # ----------------------------------------------------
-        # LOGIN LOGIC
+        # LOGIN LOGIC WITH POPUP HANDLING
         # ----------------------------------------------------
         print("1) Login process start ho raha hai...")
         driver.get(LOGIN_URL)
@@ -374,6 +400,9 @@ def extract_vinculum_returns():
             By.XPATH, "//button[contains(translate(.,'LOGIN','login'),'login')] | //input[@type='submit' or @id='loginButton']"
         )
         driver.execute_script("arguments[0].click();", login_btn)
+
+        # Handle "Already Logged In / Force Login" Popup
+        handle_login_popups(driver)
 
         time.sleep(5)
         print("   Login SUCCESS.")
