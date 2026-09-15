@@ -802,7 +802,15 @@ function filteredRows(){
     if(f&&od<f)return false;
     if(t&&od>t)return false;
     if(m&&od.slice(0,7)!==m)return false;
-    if(q&&!norm(get(r,["Order No","OrderNo","Order Number","Order ID"])).toLowerCase().includes(q))return false;
+    if(q){
+      const searchableText=[
+        get(r,["Order No","OrderNo","Order Number","Order ID"]),
+        get(r,["ExternOrderNo","Extern Order No","ExternalOrderNo"]),
+        get(r,["Doc/INV_no","Doc/INV_No","Doc INV no","DocINVno"]),
+        get(r,["Zoho_DOCNo","Zoho DOCNo","ZohoDOCNo"])
+      ].map(v=>norm(v).toLowerCase()).join(" ");
+      if(!searchableText.includes(q))return false;
+    }
     return true;
   });
 }
