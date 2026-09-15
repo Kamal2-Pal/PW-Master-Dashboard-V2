@@ -235,8 +235,19 @@ def open_inbound_enquiry_screen(driver, wait):
             "hover/click se nahi mila."
         )
 
+    windows_before_click = driver.window_handles
     driver.execute_script("arguments[0].click();", inbound_enquiry_link)
     print("   'Inbound Enquiry' click ho gaya.")
+    time.sleep(2)
+
+    # If the click opened a new browser tab/window (rather than loading into
+    # an iframe of the current one), switch to it - everything we search for
+    # afterward would otherwise silently look in the wrong window.
+    windows_after_click = driver.window_handles
+    if len(windows_after_click) > len(windows_before_click):
+        new_window = [w for w in windows_after_click if w not in windows_before_click][0]
+        driver.switch_to.window(new_window)
+        print(f"   Naya browser tab/window khula tha ({len(windows_after_click)} total) - switch kar diya.")
 
     # Find which document context (top-level page, or one of possibly several
     # iframes, possibly added to the DOM with some delay) actually contains
@@ -303,6 +314,14 @@ def open_inbound_enquiry_screen(driver, wait):
     if not found_context:
         driver.switch_to.default_content()
         print(f"   {attempt} attempts ke baad bhi screen markers nahi mile; top-level page par hi aage badh raha hoon.")
+        try:
+            print(f"   [debug] Current URL: {driver.current_url}")
+            print(f"   [debug] Open windows/tabs: {len(driver.window_handles)}")
+            print(f"   [debug] iframe count (top-level): {len(driver.find_elements(By.TAG_NAME, 'iframe'))}")
+            body_text = driver.find_element(By.TAG_NAME, "body").text
+            print(f"   [debug] Page body snippet (first 400 chars): {body_text[:400]!r}")
+        except Exception as exc:
+            print(f"   [debug] Diagnostics collection failed: {exc}")
 
 
 def set_inbound_type_filter(driver, wait, value):
