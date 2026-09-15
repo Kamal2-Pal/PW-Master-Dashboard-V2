@@ -292,42 +292,58 @@ def extract_vinculum_returns():
 
     try:
         # ----------------------------------------------------
-        # LOGIN LOGIC (ROBUST FALLBACK)
+        # FIXED LOGIN LOGIC (Avoids ElementNotInteractableException)
         # ----------------------------------------------------
         print("1) Login process start ho raha hai...")
         driver.get(LOGIN_URL)
-        time.sleep(3)
+        time.sleep(2)
 
-        username_el = None
-        # Try finding username element in main page or nested iframes
-        try:
-            username_el = wait.until(
-                EC.presence_of_element_located((By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']"))
-            )
-        except Exception:
-            iframes = driver.find_elements(By.TAG_NAME, "iframe")
-            for fr in iframes:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(fr)
-                inputs = driver.find_elements(By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']")
-                if inputs:
-                    username_el = inputs[0]
-                    break
+        # Look for login elements across top-level and potential frames
+        def get_login_inputs():
+            driver.switch_to.default_content()
+            u = driver.find_elements(By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']")
+            p = driver.find_elements(By.XPATH, "//input[@type='password' or @name='password' or @id='password']")
+            if u and p:
+                return u[0], p[0]
+            
+            for fr in driver.find_elements(By.TAG_NAME, "iframe"):
+                try:
+                    driver.switch_to.default_content()
+                    driver.switch_to.frame(fr)
+                    u = driver.find_elements(By.XPATH, "//input[@type='text' or @type='email' or @name='username' or @id='username']")
+                    p = driver.find_elements(By.XPATH, "//input[@type='password' or @name='password' or @id='password']")
+                    if u and p:
+                        return u[0], p[0]
+                except Exception:
+                    pass
+            return None, None
 
-        if not username_el:
-            raise RuntimeError("Login screen par Username input field nahi mil paaya.")
+        username_el, password_el = None, None
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            username_el, password_el = get_login_inputs()
+            if username_el and password_el:
+                break
+            time.sleep(1)
 
-        # Set Username via JS and send_keys
+        if not username_el or not password_el:
+            raise RuntimeError("Login fields (Username/Password) nahi mil paaye.")
+
+        # Safe Value Injection via JS & Send Keys
         driver.execute_script("arguments[0].scrollIntoView(true);", username_el)
         driver.execute_script("arguments[0].value = '';", username_el)
-        username_el.send_keys(VINCULUM_USERNAME)
+        try:
+            username_el.send_keys(VINCULUM_USERNAME)
+        except Exception:
+            driver.execute_script("arguments[0].value = arguments[1];", username_el, VINCULUM_USERNAME)
 
-        # Set Password
-        password_el = driver.find_element(By.XPATH, "//input[@type='password' or @name='password' or @id='password']")
         driver.execute_script("arguments[0].value = '';", password_el)
-        password_el.send_keys(VINCULUM_PASSWORD)
+        try:
+            password_el.send_keys(VINCULUM_PASSWORD)
+        except Exception:
+            driver.execute_script("arguments[0].value = arguments[1];", password_el, VINCULUM_PASSWORD)
 
-        # Click Login Button
+        # Login Click
         login_btn = driver.find_element(
             By.XPATH, "//button[contains(translate(.,'LOGIN','login'),'login')] | //input[@type='submit' or @id='loginButton']"
         )
