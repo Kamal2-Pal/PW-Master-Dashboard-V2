@@ -384,14 +384,26 @@ def main():
     # Only the EMAIL is limited to twice a day, close to 9 AM and 7 PM IST.
     # The workflow's existing cron ("0 */2 * * *") triggers at :30 past every
     # even UTC hour, which lands at 9:30 AM and 7:30 PM IST specifically -
-    # checking the hour (ignoring the :30 minutes) matches exactly those two
-    # runs among the 12 that happen per day, with no YAML/schedule changes
-    # needed.
-    EMAIL_HOURS_IST = {9, 19}  # ~9:30 AM and ~7:30 PM IST, given the current schedule
+    # checking the hour (ignoring the :30 minutes) matches those two runs
+    # among the 12 that happen per day, with no YAML/schedule changes needed.
+    #
+    # GitHub Actions scheduled workflows are "best effort" and can run late
+    # (sometimes well past their intended trigger time during high load), so
+    # the window includes the following hour too as a safety margin - a run
+    # meant for 9:30 that actually starts at 10:15 should still count.
+    #
+    # A manually-triggered run (FORCE_EMAIL=true, set by main.yml when
+    # github.event_name == 'workflow_dispatch') always sends the email
+    # regardless of the time, so testing via "Run workflow" isn't blocked.
+    EMAIL_HOURS_IST = {9, 10, 19, 20}
     current_hour = now_ist().hour
-    if current_hour not in EMAIL_HOURS_IST:
-        print(f"[diagnostic] Current IST hour is {current_hour} - not an email-sending window ({sorted(EMAIL_HOURS_IST)}). Data still synced/committed normally, email skipped this run.")
+    force_email = os.environ.get("FORCE_EMAIL", "").strip().lower() == "true"
+
+    if not force_email and current_hour not in EMAIL_HOURS_IST:
+        print(f"[diagnostic] Current IST hour is {current_hour} - not an email-sending window ({sorted(EMAIL_HOURS_IST)}) and this isn't a manual run. Data still synced/committed normally, email skipped this run.")
         return
+    if force_email:
+        print("[diagnostic] Manual run (workflow_dispatch) - sending email regardless of current time.")
 
     current_rows = read_xlsx_best_sheet("data.xlsx") if os.path.exists("data.xlsx") else []
     print(f"[diagnostic] data.xlsx rows read: {len(current_rows)}")
