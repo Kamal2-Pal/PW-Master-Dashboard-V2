@@ -70,6 +70,7 @@ jobs:
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
           BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
           ALERT_RECIPIENTS: ${{ secrets.ALERT_RECIPIENTS }}
+          FORCE_EMAIL: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           python "send_open_orders_alert.py"
 
