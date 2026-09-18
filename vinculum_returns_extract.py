@@ -412,15 +412,39 @@ def create_returns_export_request(driver, wait):
     time.sleep(2)
 
     print("8) Export fields select kar raha hoon...")
-    all_modal_contents = driver.find_elements(By.CSS_SELECTOR, "div.modal-content")
+
+    def find_modal_here():
+        try:
+            for mc in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
+                if mc.is_displayed() and "Select Field For Export" in mc.text:
+                    return mc
+        except Exception:
+            pass
+        return None
+
+    # The modal may render in the current (deeply nested) iframe context, in
+    # its parent frame, or escape all the way out to the top-level document -
+    # unlike Order Enquiry (which needed no such search), Inbound Enquiry's
+    # own screen required diving into a nested iframe, so the modal's own
+    # position relative to that nesting isn't guaranteed. Try each context.
     modal_content = None
-    for mc in all_modal_contents:
-        if mc.is_displayed() and "Select Field For Export" in mc.text:
-            modal_content = mc
+    search_contexts = ["current", "parent", "top-level"]
+    for ctx in search_contexts:
+        if ctx == "parent":
+            try:
+                driver.switch_to.parent_frame()
+            except Exception:
+                continue
+        elif ctx == "top-level":
+            driver.switch_to.default_content()
+
+        modal_content = find_modal_here()
+        if modal_content is not None:
+            print(f"   Modal mil gaya ({ctx} context mein).")
             break
 
     if modal_content is None:
-        raise RuntimeError("Select Field For Export modal nahi mila.")
+        raise RuntimeError("Select Field For Export modal nahi mila (current/parent/top-level sab try kiye).")
 
     nested_iframe = modal_content.find_element(By.CSS_SELECTOR, "iframe")
     driver.switch_to.frame(nested_iframe)
