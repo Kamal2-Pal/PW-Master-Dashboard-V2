@@ -422,32 +422,69 @@ def create_returns_export_request(driver, wait):
             pass
         return None
 
-    # The modal may render in the current (deeply nested) iframe context, in
-    # its parent frame, or escape all the way out to the top-level document -
-    # unlike Order Enquiry (which needed no such search), Inbound Enquiry's
-    # own screen required diving into a nested iframe, so the modal's own
-    # position relative to that nesting isn't guaranteed. Try each context.
+    # Poll across top-level + every iframe (+ one level of nesting) since a
+    # single check right after a 2s sleep was too fast for headless CI - the
+    # modal can take a bit longer to render there than in a real browser.
     modal_content = None
-    search_contexts = ["current", "parent", "top-level"]
-    for ctx in search_contexts:
-        if ctx == "parent":
-            try:
-                driver.switch_to.parent_frame()
-            except Exception:
-                continue
-        elif ctx == "top-level":
-            driver.switch_to.default_content()
-
+    deadline = time.time() + 20
+    attempt = 0
+    while time.time() < deadline and modal_content is None:
+        attempt += 1
+        driver.switch_to.default_content()
         modal_content = find_modal_here()
-        if modal_content is not None:
-            print(f"   Modal mil gaya ({ctx} context mein).")
+        if modal_content:
+            print(f"   (attempt {attempt}) Modal top-level page par mil gaya.")
             break
 
-    if modal_content is None:
-        raise RuntimeError("Select Field For Export modal nahi mila (current/parent/top-level sab try kiye).")
+        all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        for fr in all_iframes:
+            try:
+                if not fr.is_displayed():
+                    continue
+                driver.switch_to.default_content()
+                driver.switch_to.frame(fr)
+                modal_content = find_modal_here()
+                if modal_content:
+                    print(f"   (attempt {attempt}) Modal iframe ke andar mil gaya.")
+                    break
 
-    nested_iframe = modal_content.find_element(By.CSS_SELECTOR, "iframe")
-    driver.switch_to.frame(nested_iframe)
+                nested_iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                for nfr in nested_iframes:
+                    try:
+                        if not nfr.is_displayed():
+                            continue
+                        driver.switch_to.frame(nfr)
+                        modal_content = find_modal_here()
+                        if modal_content:
+                            print(f"   (attempt {attempt}) Modal NESTED iframe ke andar mil gaya.")
+                            break
+                        driver.switch_to.parent_frame()
+                    except Exception:
+                        try:
+                            driver.switch_to.parent_frame()
+                        except Exception:
+                            pass
+                if modal_content:
+                    break
+            except Exception:
+                continue
+
+        if modal_content is None:
+            time.sleep(1)
+
+    if modal_content is None:
+        driver.switch_to.default_content()
+        raise RuntimeError(f"Select Field For Export modal {attempt} attempts ke baad bhi nahi mila.")
+
+    # The modal MAY contain a further-nested iframe (Order Enquiry's does),
+    # but inspect element showed no iframe-crossing for Inbound Enquiry's
+    # checkbox - so this is now optional, not required.
+    try:
+        nested_iframe = modal_content.find_element(By.CSS_SELECTOR, "iframe")
+        driver.switch_to.frame(nested_iframe)
+        print("   Modal ke andar nested iframe mila, usme switch ho gaya.")
+    except Exception:
+        print("   Modal ke andar koi nested iframe nahi mila - seedha isi context mein aage badh raha hoon.")
     time.sleep(1)
 
     try:
