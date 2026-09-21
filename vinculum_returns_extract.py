@@ -426,7 +426,7 @@ def create_returns_export_request(driver, wait):
     # single check right after a 2s sleep was too fast for headless CI - the
     # modal can take a bit longer to render there than in a real browser.
     modal_content = None
-    deadline = time.time() + 20
+    deadline = time.time() + 60
     attempt = 0
     while time.time() < deadline and modal_content is None:
         attempt += 1
