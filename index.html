@@ -1172,43 +1172,50 @@ function renderReturnsTab(){
   const returnQtyPct = totalShippedQty ? (totalReturnQty/totalShippedQty*100) : 0;
   const returnValuePct = totalShippedValue ? (totalReturnValue/totalShippedValue*100) : 0;
 
+  function formatReturnQty(value){
+    const n=Number(value||0), a=Math.abs(n);
+    if(a>=1e9) return (n/1e9).toFixed(2)+"B";
+    if(a>=1e6) return (n/1e6).toFixed(2)+"M";
+    if(a>=1e3) return (n/1e3).toFixed(2)+"K";
+    return n.toLocaleString(undefined,{maximumFractionDigits:2});
+  }
   function formatReturnValue(value){
-    const n = Number(value || 0);
-    if(Math.abs(n) >= 1000000000) return "₹" + (n / 1000000000).toFixed(2) + "B";
-    if(Math.abs(n) >= 1000000) return "₹" + (n / 1000000).toFixed(2) + "M";
-    if(Math.abs(n) >= 1000) return "₹" + (n / 1000).toFixed(2) + "K";
-    return "₹" + n.toLocaleString(undefined,{maximumFractionDigits:2});
+    const n=Number(value||0), a=Math.abs(n);
+    if(a>=1e9) return "₹"+(n/1e9).toFixed(2)+"B";
+    if(a>=1e6) return "₹"+(n/1e6).toFixed(2)+"M";
+    if(a>=1e3) return "₹"+(n/1e3).toFixed(2)+"K";
+    return "₹"+n.toLocaleString(undefined,{maximumFractionDigits:2});
   }
 
   $("returnsKpis").innerHTML=[
-    ["Total Shipped Qty",totalShippedQty.toLocaleString()],
+    ["Total Shipped Qty",formatReturnQty(totalShippedQty)],
     ["Total Shipped Value",formatReturnValue(totalShippedValue)],
-    ["Total Return Qty",totalReturnQty.toLocaleString()],
+    ["Total Return Qty",formatReturnQty(totalReturnQty)],
     ["Total Return Value",formatReturnValue(totalReturnValue)],
     ["Return Qty %",returnQtyPct.toFixed(1)+"%"],
     ["Return Value %",returnValuePct.toFixed(1)+"%"]
-  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
+  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");;
 
-  function buildDualChart(el, dataFn){
+  function buildDualChart(el, dataFn, formatFn){
     if(!allMonths.length){ el.innerHTML='<div class="note">No data</div>'; return; }
     const max = Math.max(...allMonths.map(m=>{const d=dataFn(m); return Math.max(d.shipped,d.returned);}),1);
     el.innerHTML = `<div class="legend"><span><i style="background:#2d8cff"></i>Shipped</span><span><i style="background:#e0554f"></i>Returned</span></div>`+
       `<div class="bars">${allMonths.map(m=>{
         const d=dataFn(m);
         const sH=Math.max(3,d.shipped/max*200), rH=Math.max(3,d.returned/max*200);
-        return `<div class="month-group"><div class="pair"><div class="shipped" style="height:${sH}px" title="Shipped: ${d.shipped.toLocaleString()}"></div><div class="returned" style="height:${rH}px" title="Returned: ${d.returned.toLocaleString()}"></div></div><span>${m}</span></div>`;
+        return `<div class="month-group"><div class="pair"><div class="shipped" style="height:${sH}px" title="Shipped: ${formatFn(d.shipped)}"></div><div class="returned" style="height:${rH}px" title="Returned: ${formatFn(d.returned)}"></div></div><span>${m}</span></div>`;
       }).join("")}</div>`;
   }
 
-  buildDualChart($("returnsQtyChart"), m=>({shipped:(shippedByMonth.get(m)||{qty:0}).qty, returned:(returnByMonth.get(m)||{qty:0}).qty}));
-  buildDualChart($("returnsValueChart"), m=>({shipped:(shippedByMonth.get(m)||{value:0}).value, returned:(returnByMonth.get(m)||{value:0}).value}));
+  buildDualChart($("returnsQtyChart"), m=>({shipped:(shippedByMonth.get(m)||{qty:0}).qty, returned:(returnByMonth.get(m)||{qty:0}).qty}), formatReturnQty);
+  buildDualChart($("returnsValueChart"), m=>({shipped:(shippedByMonth.get(m)||{value:0}).value, returned:(returnByMonth.get(m)||{value:0}).value}), formatReturnValue);
 
   $("returnsTbody").innerHTML = allMonths.map(m=>{
     const s=shippedByMonth.get(m)||{qty:0,value:0};
     const r=returnByMonth.get(m)||{qty:0,value:0};
     const qPct = s.qty ? (r.qty/s.qty*100) : 0;
     const vPct = s.value ? (r.value/s.value*100) : 0;
-    return `<tr><td>${m}</td><td>${s.qty.toLocaleString()}</td><td>${s.value.toLocaleString()}</td><td>${r.qty.toLocaleString()}</td><td>${r.value.toLocaleString()}</td><td>${qPct.toFixed(1)}%</td><td>${vPct.toFixed(1)}%</td></tr>`;
+    return `<tr><td>${m}</td><td>${s.formatReturnQty(qty)}</td><td>${s.formatReturnValue(value)}</td><td>${r.formatReturnQty(qty)}</td><td>${r.formatReturnValue(value)}</td><td>${qPct.toFixed(1)}%</td><td>${vPct.toFixed(1)}%</td></tr>`;
   }).join("") || `<tr><td colspan="7" class="muted">No data available.</td></tr>`;
 }
 
