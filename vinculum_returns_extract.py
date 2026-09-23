@@ -732,33 +732,111 @@ def extract_vinculum_returns():
         print("10) Pending Report open/monitor kar raha hoon...")
 
         def switch_to_pending_report():
+            """Open Pending Report using the site's own openScreen() JS and
+            then locate the report grid in the top-level document or iframe.
+
+            Inspect Element confirmed that the menu item itself calls:
+            openScreen("Pending Report", "pendingDisplay", "fa fa-fw fa-truck")
+            so we do not assume Pending Report is an iframe.
+            """
             driver.switch_to.default_content()
-            time.sleep(0.5)
-            for fr in driver.find_elements(By.TAG_NAME, "iframe"):
+
+            # First, use the same JS function as the real Pending Report menu click.
+            try:
+                driver.execute_script(
+                    "openScreen('Pending Report', 'pendingDisplay', 'fa fa-fw fa-truck');"
+                )
+            except Exception as exc:
+                print(f"   Pending Report openScreen() warning: {exc}")
+
+            # Give the tab/screen a moment to render.
+            deadline = time.time() + 15
+
+            def grid_present():
                 try:
-                    # Headless Chrome can report iframe visibility differently
-                    # while the Pending Report frame is being refreshed.
-                    driver.switch_to.frame(fr)
-                    body_text = driver.find_element(By.TAG_NAME, "body").text.lower()
-                    if "pending report" in body_text or "report names" in body_text or "report requests" in body_text:
-                        return True
+                    rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+                    if rows:
+                        body = driver.find_element(By.TAG_NAME, "body").text.lower()
+                        return (
+                            "pending report" in body
+                            or "report names" in body
+                            or "report request" in body
+                        )
                 except Exception:
                     pass
+                return False
+
+            while time.time() < deadline:
+                # IMPORTANT: screenshots show Pending Report can exist directly
+                # in the current document, not only inside an iframe.
+                driver.switch_to.default_content()
+                if grid_present():
+                    print("   Pending Report top-level page par mil gaya.")
+                    return True
+
+                # Fallback: search one or more iframe levels.
                 try:
-                    driver.switch_to.default_content()
+                    frames = driver.find_elements(By.TAG_NAME, "iframe")
                 except Exception:
-                    pass
+                    frames = []
+
+                for fr in frames:
+                    try:
+                        driver.switch_to.default_content()
+                        driver.switch_to.frame(fr)
+                        if grid_present():
+                            print("   Pending Report iframe ke andar mil gaya.")
+                            return True
+
+                        nested = driver.find_elements(By.TAG_NAME, "iframe")
+                        for nfr in nested:
+                            try:
+                                driver.switch_to.frame(nfr)
+                                if grid_present():
+                                    print("   Pending Report nested iframe ke andar mil gaya.")
+                                    return True
+                                driver.switch_to.parent_frame()
+                            except Exception:
+                                try:
+                                    driver.switch_to.parent_frame()
+                                except Exception:
+                                    pass
+                    except Exception:
+                        continue
+
+                driver.switch_to.default_content()
+                time.sleep(1)
+
+            driver.switch_to.default_content()
+            try:
+                body = driver.find_element(By.TAG_NAME, "body").text
+                print(f"   [debug] Pending Report search timeout. Body snippet: {body[:800]!r}")
+                print(f"   [debug] Top-level iframe count: {len(driver.find_elements(By.TAG_NAME, 'iframe'))}")
+            except Exception as exc:
+                print(f"   [debug] Pending Report diagnostics failed: {exc}")
             return False
 
         def refresh_pending_report():
             if not switch_to_pending_report():
                 return False
             try:
-                driver.execute_script(
+                refreshed = driver.execute_script(
                     "if (typeof refreshGrid === 'function') { refreshGrid(); return true; } return false;"
                 )
-                print("   Pending Report ka actual Refresh (refreshGrid()) click hua.")
-                return True
+                if refreshed:
+                    print("   Pending Report ka actual Refresh (refreshGrid()) click hua.")
+                    return True
+
+                # If the screen function is scoped differently, click the
+                # inspected refresh control directly as a fallback.
+                refresh_links = driver.find_elements(
+                    By.CSS_SELECTOR, "#refreshBtn a[onclick*='refreshGrid']"
+                )
+                if refresh_links:
+                    driver.execute_script("arguments[0].click();", refresh_links[0])
+                    print("   Pending Report refresh link click hua.")
+                    return True
+                return False
             finally:
                 driver.switch_to.default_content()
 
@@ -791,7 +869,7 @@ def extract_vinculum_returns():
         if not switch_to_pending_report():
             time.sleep(3)
             if not switch_to_pending_report():
-                raise RuntimeError("Pending Report iframe nahi mila.")
+                raise RuntimeError("Pending Report screen/grid nahi mila.")
         driver.switch_to.default_content()
 
         switch_to_pending_report()
@@ -860,7 +938,7 @@ def extract_vinculum_returns():
         files_before_download = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
 
         if not switch_to_pending_report():
-            raise RuntimeError("SUCCESS ke baad Pending Report iframe nahi mila.")
+            raise RuntimeError("SUCCESS ke baad Pending Report screen/grid nahi mila.")
 
         rows = get_return_rows()
         target = next(
