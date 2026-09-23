@@ -486,9 +486,10 @@ def create_returns_export_request(driver, wait):
     while time.time() < modal_deadline and modal_content is None:
         modal_attempt += 1
         try:
-            # Always start from the current Inbound Enquiry parent context.
-            driver.switch_to.default_content()
-
+            # IMPORTANT: stay in the Inbound Enquiry iframe context.
+            # The proven reference extractor searches div.modal-content from
+            # the SAME parent iframe immediately after Detail Export.
+            # Switching to default_content() here loses the modal context.
             all_modal_contents = driver.find_elements(
                 By.CSS_SELECTOR, "div.modal-content"
             )
@@ -511,7 +512,24 @@ def create_returns_export_request(driver, wait):
             time.sleep(1)
 
     if modal_content is None:
-        # Diagnostic: show visible modal text so the next failure is useful.
+        # Only after checking the current Inbound Enquiry iframe, try the
+        # top-level document as a fallback. Do not make it the primary path.
+        try:
+            driver.switch_to.default_content()
+            all_modal_contents = driver.find_elements(
+                By.CSS_SELECTOR, "div.modal-content"
+            )
+            for mc in all_modal_contents:
+                try:
+                    if mc.is_displayed() and "select field for export" in (mc.text or "").lower():
+                        modal_content = mc
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if modal_content is None:
         try:
             visible_modals = [
                 (mc.text or "")[:300]
@@ -522,7 +540,7 @@ def create_returns_export_request(driver, wait):
         except Exception:
             pass
         raise RuntimeError(
-            "Select Field For Export modal nahi mila."
+            "Select Field For Export modal nahi mila. Current Inbound Enquiry iframe mein bhi nahi mila."
         )
 
     # The export field grid is inside the modal's iframe, exactly as in the
