@@ -413,27 +413,19 @@ def create_returns_export_request(driver, wait):
 
     print("8) Export fields select kar raha hoon...")
 
-    # Vinculum can render the export-field dialog in the current window,
-    # another window/tab, or inside an iframe.  In GitHub Actions the dialog
-    # is sometimes slower to appear, so search all window handles and recurse
-    # through iframes instead of assuming one fixed DOM location.
-    def find_export_modal_here():
-        try:
-            for mc in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-                if mc.is_displayed() and "select field for export" in mc.text.lower():
-                    return mc
-        except Exception:
-            pass
+    # IMPORTANT: Inspect Element confirmed the real export dialog controls:
+    #   Select-all checkbox -> input#cb_dynamicFieldGrid
+    #   Export button       -> button[title="Export"]
+    # The dialog itself is not reliably represented as a Bootstrap
+    # .modal-content in GitHub Actions, so do NOT wait for a modal wrapper.
+    # Instead, search directly for the confirmed control across every
+    # window/tab and nested iframe.
 
-        # Fallback for layouts where the dialog wrapper is not modal-content.
+    def find_element_recursive(locator, depth=0, max_depth=6):
+        """Find a visible element in the current window/frame tree."""
         try:
-            candidates = driver.find_elements(
-                By.XPATH,
-                "//*[contains(translate(normalize-space(.),"
-                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
-                "'select field for export')]"
-            )
-            for el in candidates:
+            elements = driver.find_elements(*locator)
+            for el in elements:
                 try:
                     if el.is_displayed():
                         return el
@@ -441,12 +433,6 @@ def create_returns_export_request(driver, wait):
                     pass
         except Exception:
             pass
-        return None
-
-    def find_export_modal_recursive(depth=0, max_depth=4):
-        modal = find_export_modal_here()
-        if modal is not None:
-            return modal
 
         if depth >= max_depth:
             return None
@@ -461,9 +447,9 @@ def create_returns_export_request(driver, wait):
                 if not fr.is_displayed():
                     continue
                 driver.switch_to.frame(fr)
-                modal = find_export_modal_recursive(depth + 1, max_depth)
-                if modal is not None:
-                    return modal
+                found = find_element_recursive(locator, depth + 1, max_depth)
+                if found is not None:
+                    return found
                 driver.switch_to.parent_frame()
             except Exception:
                 try:
@@ -472,24 +458,29 @@ def create_returns_export_request(driver, wait):
                     driver.switch_to.default_content()
         return None
 
-    modal_content = None
-    modal_window = None
-    modal_attempt = 0
+    select_all_cb = None
+    export_window = None
     deadline = time.time() + 90
+    attempt = 0
 
-    while time.time() < deadline and modal_content is None:
-        modal_attempt += 1
-        handles = list(driver.window_handles)
+    while time.time() < deadline and select_all_cb is None:
+        attempt += 1
 
-        for handle in handles:
+        for handle in list(driver.window_handles):
             try:
                 driver.switch_to.window(handle)
                 driver.switch_to.default_content()
-                modal_content = find_export_modal_recursive()
-                if modal_content is not None:
-                    modal_window = handle
+
+                # Exact ID confirmed from Inspect Element.
+                select_all_cb = find_element_recursive(
+                    (By.ID, "cb_dynamicFieldGrid")
+                )
+
+                if select_all_cb is not None:
+                    export_window = handle
                     print(
-                        f"   (attempt {modal_attempt}) Select Field For Export modal mil gaya."
+                        f"   (attempt {attempt}) Select-all checkbox "
+                        "#cb_dynamicFieldGrid mil gaya."
                     )
                     break
             except Exception:
@@ -498,80 +489,64 @@ def create_returns_export_request(driver, wait):
                 except Exception:
                     pass
 
-        if modal_content is None:
+        if select_all_cb is None:
             time.sleep(1)
 
-    if modal_content is None:
+    if select_all_cb is None:
         driver.switch_to.default_content()
         raise RuntimeError(
-            f"Select Field For Export modal {modal_attempt} attempts ke baad bhi nahi mila."
+            "Detail Export ke baad #cb_dynamicFieldGrid checkbox 90 sec "
+            "tak nahi mila. Inspect Element ke confirmed selector ke "
+            "according dialog load nahi hua."
         )
 
-    if modal_window:
-        driver.switch_to.window(modal_window)
+    if export_window:
+        driver.switch_to.window(export_window)
 
-    # find_export_modal_recursive() leaves Selenium in the frame containing
-    # the modal.  The export field controls may be one more iframe deeper.
+    # find_element_recursive() leaves Selenium in the iframe containing the
+    # checkbox. Use the exact inspected checkbox and click it with JS so the
+    # site's own checkbox handler receives the click.
     try:
-        nested_iframe = modal_content.find_element(By.CSS_SELECTOR, "iframe")
-        driver.switch_to.frame(nested_iframe)
-        print("   Modal ke andar nested iframe mila, usme switch ho gaya.")
-    except Exception:
-        print("   Modal ke andar nested iframe nahi mila - current context use hoga.")
-
-    time.sleep(1)
-
-    # Select all fields.  Use the known Vinculum ID first and then fall back
-    # to every visible checkbox if the ID changes.
-    try:
-        select_all_cb = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.ID, "cb_dynamicFieldGrid"))
-        )
         if not select_all_cb.is_selected():
             driver.execute_script("arguments[0].click();", select_all_cb)
+            time.sleep(1)
         print("   Select-all checkbox click ho gaya.")
-    except Exception:
-        print("   Select-all fallback use kar raha hoon...")
-        all_checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
-        visible_count = 0
-        for checkbox in all_checkboxes:
-            try:
-                if checkbox.is_displayed() and not checkbox.is_selected():
-                    driver.execute_script("arguments[0].click();", checkbox)
-                    visible_count += 1
-                    time.sleep(0.05)
-            except Exception:
-                pass
-        if visible_count == 0:
-            raise RuntimeError("Export modal mila, lekin koi selectable field checkbox nahi mila.")
+    except Exception as exc:
+        raise RuntimeError(
+            "#cb_dynamicFieldGrid mila, lekin select-all click nahi ho paya."
+        ) from exc
 
     print("9) Export click kar raha hoon...")
 
-    export_btn = None
-    try:
-        export_btn = WebDriverWait(driver, 15).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[@title='Export']"))
-        )
-    except Exception:
-        try:
-            export_btn = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    "//*[self::button or self::input or self::a or self::label]"
-                    "[contains(translate(normalize-space(.),"
-                    "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'export')]"
-                ))
+    # Exact Export button selector confirmed from Inspect Element:
+    # <button ... title="Export" onclick="exportData();">
+    export_btn = find_element_recursive(
+        (By.CSS_SELECTOR, "button[title='Export']")
+    )
+
+    if export_btn is None:
+        # Text fallback only if the exact inspected selector is unavailable.
+        export_btn = find_element_recursive(
+            (
+                By.XPATH,
+                "//button[contains(translate(normalize-space(.),"
+                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                "'export')]"
             )
-        except Exception as exc:
-            raise RuntimeError("Export modal mil gaya, lekin Export button nahi mila.") from exc
+        )
+
+    if export_btn is None:
+        raise RuntimeError(
+            "Export modal/field grid mila, lekin exact "
+            "button[title='Export'] nahi mila."
+        )
 
     driver.execute_script("arguments[0].click();", export_btn)
+    print("   Export button click ho gaya (exportData()).")
     time.sleep(3)
 
     driver.switch_to.default_content()
     time.sleep(1)
-
-
 
 # ============================================================
 # MAIN EXTRACTION
