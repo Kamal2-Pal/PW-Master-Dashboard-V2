@@ -1157,9 +1157,25 @@ function renderReturnsTab(){
   const allMonths = unique([...shippedByMonth.keys(), ...returnByMonth.keys()]);
 
   if(!returnsRaw.length){
-    $("returnsColumnNote").textContent="No returns.xlsx data found yet - the Returns extraction workflow step may not have run successfully yet, or hasn't been deployed. Shipped-side numbers below still reflect current order data.";
+    $("returnsColumnNote").textContent="No Returns data found in returns.xlsx or Returns History files. Shipped-side numbers below still reflect current order data.";
   } else {
-    $("returnsColumnNote").textContent="Month-wise comparison: quantity & value shipped vs. quantity & value returned.";
+    $("returnsColumnNote").textContent="Month-wise comparison: quantity & value shipped vs. quantity & value returned (current + historical Returns data).";
+  }
+
+  function formatReturnQty(value){
+    const n=Number(value||0), a=Math.abs(n);
+    if(a>=1e9) return (n/1e9).toFixed(2)+"B";
+    if(a>=1e6) return (n/1e6).toFixed(2)+"M";
+    if(a>=1e3) return (n/1e3).toFixed(2)+"K";
+    return n.toLocaleString(undefined,{maximumFractionDigits:2});
+  }
+
+  function formatReturnValue(value){
+    const n=Number(value||0), a=Math.abs(n);
+    if(a>=1e9) return "₹"+(n/1e9).toFixed(2)+"B";
+    if(a>=1e6) return "₹"+(n/1e6).toFixed(2)+"M";
+    if(a>=1e3) return "₹"+(n/1e3).toFixed(2)+"K";
+    return "₹"+n.toLocaleString(undefined,{maximumFractionDigits:2});
   }
 
   let totalShippedQty=0,totalShippedValue=0,totalReturnQty=0,totalReturnValue=0;
@@ -1172,21 +1188,6 @@ function renderReturnsTab(){
   const returnQtyPct = totalShippedQty ? (totalReturnQty/totalShippedQty*100) : 0;
   const returnValuePct = totalShippedValue ? (totalReturnValue/totalShippedValue*100) : 0;
 
-  function formatReturnQty(value){
-    const n=Number(value||0), a=Math.abs(n);
-    if(a>=1e9) return (n/1e9).toFixed(2)+"B";
-    if(a>=1e6) return (n/1e6).toFixed(2)+"M";
-    if(a>=1e3) return (n/1e3).toFixed(2)+"K";
-    return n.toLocaleString(undefined,{maximumFractionDigits:2});
-  }
-  function formatReturnValue(value){
-    const n=Number(value||0), a=Math.abs(n);
-    if(a>=1e9) return "₹"+(n/1e9).toFixed(2)+"B";
-    if(a>=1e6) return "₹"+(n/1e6).toFixed(2)+"M";
-    if(a>=1e3) return "₹"+(n/1e3).toFixed(2)+"K";
-    return "₹"+n.toLocaleString(undefined,{maximumFractionDigits:2});
-  }
-
   $("returnsKpis").innerHTML=[
     ["Total Shipped Qty",formatReturnQty(totalShippedQty)],
     ["Total Shipped Value",formatReturnValue(totalShippedValue)],
@@ -1194,7 +1195,7 @@ function renderReturnsTab(){
     ["Total Return Value",formatReturnValue(totalReturnValue)],
     ["Return Qty %",returnQtyPct.toFixed(1)+"%"],
     ["Return Value %",returnValuePct.toFixed(1)+"%"]
-  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");;
+  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
 
   function buildDualChart(el, dataFn, formatFn){
     if(!allMonths.length){ el.innerHTML='<div class="note">No data</div>'; return; }
@@ -1215,7 +1216,7 @@ function renderReturnsTab(){
     const r=returnByMonth.get(m)||{qty:0,value:0};
     const qPct = s.qty ? (r.qty/s.qty*100) : 0;
     const vPct = s.value ? (r.value/s.value*100) : 0;
-    return `<tr><td>${m}</td><td>${s.formatReturnQty(qty)}</td><td>${s.formatReturnValue(value)}</td><td>${r.formatReturnQty(qty)}</td><td>${r.formatReturnValue(value)}</td><td>${qPct.toFixed(1)}%</td><td>${vPct.toFixed(1)}%</td></tr>`;
+    return `<tr><td>${m}</td><td>${formatReturnQty(s.qty)}</td><td>${formatReturnValue(s.value)}</td><td>${formatReturnQty(r.qty)}</td><td>${formatReturnValue(r.value)}</td><td>${qPct.toFixed(1)}%</td><td>${vPct.toFixed(1)}%</td></tr>`;
   }).join("") || `<tr><td colspan="7" class="muted">No data available.</td></tr>`;
 }
 
@@ -1433,17 +1434,42 @@ async function loadAllExcelData(){
 
   raw = mergeAndDeduplicate(historyData, currentMonthData);
 
-  // Returns data (from the Inbound Enquiry / GRN export) is optional - the
-  // Returns tab just shows "no data" if this file doesn't exist yet or the
-  // returns-extraction workflow step hasn't produced it successfully.
+  // Returns data: current month from returns.xlsx + historical files from
+  // "Returns History/" using the user's naming pattern:
+  // history return.xlsx, history return-01.xlsx, history return-02.xlsx, ...
+  // Files are scanned sequentially and stop at the first missing numbered file.
+  returnsRaw = [];
   try {
     const rows = await fetchAndParseWithCache("returns.xlsx");
     returnsRaw = (rows || []).filter(r =>
       norm(get(r,["Inbound Location","Warehouse","Location","FulfillmentLocationName"])) === DASHBOARD_WAREHOUSE_FILTER
     );
   } catch (err) {
-    console.warn("returns.xlsx fetch failed (Returns tab will show no data)", err);
-    returnsRaw = [];
+    console.warn("returns.xlsx fetch failed (current Returns data unavailable)", err);
+  }
+
+  const RETURNS_HISTORY_SCAN_LIMIT = 20;
+  const returnsHistoryFileNames = ["history return.xlsx"];
+  for (let i = 1; i <= RETURNS_HISTORY_SCAN_LIMIT; i++) {
+    returnsHistoryFileNames.push(`history return-${String(i).padStart(2,"0")}.xlsx`);
+  }
+
+  for (const fileName of returnsHistoryFileNames) {
+    const path = `Returns History/${fileName}`;
+    try {
+      const rows = await fetchAndParseWithCache(path);
+      if (rows) {
+        const warehouseRows = rows.filter(r =>
+          norm(get(r,["Inbound Location","Warehouse","Location","FulfillmentLocationName"])) === DASHBOARD_WAREHOUSE_FILTER
+        );
+        returnsRaw = returnsRaw.concat(warehouseRows);
+      } else if (fileName !== "history return.xlsx") {
+        break; // keep the numbering sequential; stop when the next file is absent
+      }
+    } catch (err) {
+      console.warn(`${path} fetch failed`, err);
+      if (fileName !== "history return.xlsx") break;
+    }
   }
 
   if (raw.length === 0) {
