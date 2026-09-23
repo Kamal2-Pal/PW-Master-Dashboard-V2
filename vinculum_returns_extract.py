@@ -670,208 +670,174 @@ def extract_vinculum_returns():
         create_returns_export_request(driver, wait)
 
         # ----------------------------------------------------
-        # PENDING REPORT
+        # PENDING REPORT - WAIT FOR SUCCESS, THEN DOWNLOAD
         # ----------------------------------------------------
-        print("10) Pending Report iframe dhoondh raha hoon...")
+        print("10) Pending Report open/monitor kar raha hoon...")
 
-        def find_and_switch_to_pending_iframe():
+        def switch_to_pending_report():
             driver.switch_to.default_content()
             time.sleep(0.5)
-            all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-            for fr in all_iframes:
-                if not fr.is_displayed():
-                    continue
+            for fr in driver.find_elements(By.TAG_NAME, "iframe"):
                 try:
+                    if not fr.is_displayed():
+                        continue
                     driver.switch_to.frame(fr)
-                    body_text = driver.find_element(By.TAG_NAME, "body").text
-                    if "Pending Report" in body_text or "Report ID" in body_text:
+                    body_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+                    if "pending report" in body_text or "report names" in body_text or "report requests" in body_text:
                         return True
+                except Exception:
+                    pass
+                try:
                     driver.switch_to.default_content()
                 except Exception:
-                    try:
-                        driver.switch_to.default_content()
-                    except Exception:
-                        pass
+                    pass
             return False
 
-        found = find_and_switch_to_pending_iframe()
-        if not found:
-            time.sleep(3)
-            found = find_and_switch_to_pending_iframe()
-        if not found:
-            raise RuntimeError("Pending Report iframe nahi mila.")
-
-        time.sleep(2)
-
-        STATUS_WORDS = {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}
-
-        def parse_export_row(row):
-            cells = row.find_elements(By.TAG_NAME, "td")
-            texts = [c.text.strip() for c in cells]
-            status_text = next((t.upper() for t in texts if t.upper() in STATUS_WORDS), None)
-            report_id = next((t for t in texts if t.isdigit() and len(t) >= 4), None)
-            error_msg = ""
-            for t in texts:
-                if not t or t.upper() in STATUS_WORDS or t.isdigit():
-                    continue
-                if REPORT_NAME_MARKER in t.upper().replace(" ", ""):
-                    continue
-                if "/" in t or ":" in t:
-                    continue
-                if len(t) > 8:
-                    error_msg = t
-                    break
-            return texts, report_id, status_text, error_msg
-
-        def read_latest_returns_export():
-            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
-            for row in rows:
-                cells = row.find_elements(By.TAG_NAME, "td")
-                joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
-                if REPORT_NAME_MARKER in joined:
-                    texts, report_id, status_text, error_msg = parse_export_row(row)
-                    return row, {"texts": texts, "report_id": report_id, "status": status_text, "error_msg": error_msg}
-            print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
-            return None, None
-
-        status_ready = False
-        attempt = 0
-        export_retry_count = 0
-        MAX_EXPORT_RETRIES = 10
-
-        while not status_ready:
-            attempt += 1
+        def refresh_pending_report():
+            if not switch_to_pending_report():
+                return False
             try:
+                driver.execute_script(
+                    "if (typeof refreshGrid === 'function') { refreshGrid(); return true; } return false;"
+                )
+                print("   Pending Report ka actual Refresh (refreshGrid()) click hua.")
+                return True
+            finally:
                 driver.switch_to.default_content()
-                find_and_switch_to_pending_iframe()
-                row, info = read_latest_returns_export()
 
-                if row is None:
-                    print(f"   Attempt {attempt} - returns export row abhi nahi mila.")
-                else:
-                    report_id = info["report_id"]
-                    status_text = info["status"] or ""
-                    error_msg = info["error_msg"]
-                    print(f"   Attempt {attempt} - Report {report_id} - Status: {status_text}")
-
-                    if status_text == "SUCCESS":
-                        current_report_id = report_id
-                        status_ready = True
-                        print(f"   SUCCESS mila - Report ID: {report_id}")
-                        break
-
-                    if status_text == "ERROR":
-                        export_retry_count += 1
-                        detail = error_msg or "Generic Business Error"
-                        print(f"   Report {report_id} ERROR: {detail}. Fresh export retry {export_retry_count}/{MAX_EXPORT_RETRIES}...")
-                        if export_retry_count > MAX_EXPORT_RETRIES:
-                            raise RuntimeError(f"Fresh export retries exhausted. Last Report ID: {report_id}; Error: {detail}")
-                        driver.switch_to.default_content()
-                        time.sleep(1)
-                        create_returns_export_request(driver, wait)
-                        attempt = 0
-                        time.sleep(2)
+        def get_return_rows():
+            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+            result = []
+            for row in rows:
+                try:
+                    cells = row.find_elements(By.TAG_NAME, "td")
+                    texts = [c.text.strip() for c in cells]
+                    joined = " ".join(texts).upper().replace(" ", "")
+                    if "INBOUNDENQ" not in joined and "GENERATEINBOUND" not in joined:
                         continue
+                    status_text = next(
+                        (t.upper() for t in texts if t.upper() in {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}),
+                        ""
+                    )
+                    report_id = next((t for t in texts if t.isdigit() and len(t) >= 4), None)
+                    result.append({"row": row, "texts": texts, "report_id": report_id, "status": status_text})
+                except Exception:
+                    continue
+            return result
 
-            except RuntimeError:
-                raise
-            except Exception as exc:
-                print(f"   Status read issue: {type(exc).__name__}: {exc}")
+        if not switch_to_pending_report():
+            time.sleep(3)
+            if not switch_to_pending_report():
+                raise RuntimeError("Pending Report iframe nahi mila.")
+        driver.switch_to.default_content()
 
+        switch_to_pending_report()
+        before_ids = {r["report_id"] for r in get_return_rows() if r["report_id"]}
+        driver.switch_to.default_content()
+
+        create_returns_export_request(driver, wait)
+        print("   Fresh return export request create ho gaya.")
+        print("   Jab tak status SUCCESS nahi hota, download button nahi dabega.")
+
+        current_report_id = None
+        status_ready = False
+        max_wait_seconds = 600
+        poll_seconds = 10
+        started = time.time()
+
+        while time.time() - started < max_wait_seconds:
             try:
-                find_and_switch_to_pending_iframe()
-                driver.execute_script("if (typeof refreshGrid === 'function') { refreshGrid(); }")
-                print("   Pending Report refresh kiya (10 sec interval).")
+                refresh_pending_report()
             except Exception as exc:
                 print(f"   Refresh issue: {type(exc).__name__}: {exc}")
 
-            time.sleep(10)
+            time.sleep(1)
+            if not switch_to_pending_report():
+                print("   Pending Report frame abhi available nahi hai; next poll...")
+                time.sleep(poll_seconds)
+                continue
+
+            rows = get_return_rows()
+            driver.switch_to.default_content()
+            new_rows = [r for r in rows if r["report_id"] and r["report_id"] not in before_ids]
+            candidate = new_rows[0] if new_rows else (rows[0] if rows else None)
+
+            if candidate is None:
+                print("   Return export row abhi nahi mila; 10 sec baad refresh karunga.")
+                time.sleep(poll_seconds)
+                continue
+
+            current_report_id = candidate["report_id"]
+            status_text = candidate["status"]
+            print(f"   Report {current_report_id} - Status: {status_text or 'UNKNOWN'}")
+
+            if status_text in {"ERROR", "FAILED"}:
+                raise RuntimeError(
+                    f"Return export Report ID {current_report_id} ERROR/FAILED hua. Row: {' | '.join(candidate['texts'])}"
+                )
+
+            if status_text == "SUCCESS":
+                status_ready = True
+                print(f"   SUCCESS mila - Report ID: {current_report_id}")
+                break
+
+            print("   Status SUCCESS nahi hua, isliye download button abhi nahi dabega.")
+            time.sleep(poll_seconds)
+
+        if not status_ready:
+            raise RuntimeError(
+                f"Return export {current_report_id or 'new report'} {max_wait_seconds} seconds mein SUCCESS nahi hua."
+            )
 
         # ----------------------------------------------------
-        # DOWNLOAD
+        # DOWNLOAD - ONLY AFTER SUCCESS
         # ----------------------------------------------------
-        print("11) Download click kar raha hoon...")
-
+        print("11) SUCCESS confirm ho gaya. Ab isi report ka download click kar raha hoon...")
         files_before_download = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
 
-        rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
-        export_rows = []
-        for candidate in rows:
-            cells = candidate.find_elements(By.TAG_NAME, "td")
-            joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
-            if REPORT_NAME_MARKER not in joined:
-                continue
-            _, r_id, r_status, _ = parse_export_row(candidate)
-            export_rows.append((candidate, r_id, r_status))
+        if not switch_to_pending_report():
+            raise RuntimeError("SUCCESS ke baad Pending Report iframe nahi mila.")
 
-        row = None
-        matched_report_id = None
-        for candidate, r_id, r_status in export_rows:
-            if r_id == str(current_report_id) and r_status == "SUCCESS":
-                row = candidate
-                matched_report_id = r_id
-                break
-        if row is None:
-            for candidate, r_id, r_status in export_rows:
-                if r_status == "SUCCESS":
-                    row = candidate
-                    matched_report_id = r_id
-                    break
-
-        if row is None:
-            raise RuntimeError(f"SUCCESS returns export row download ke liye nahi mila. Report ID: {current_report_id}")
-
-        print(f"   SUCCESS row confirmed - Report ID: {matched_report_id}")
-
-        download_controls = row.find_elements(
-            By.XPATH,
-            ".//*[@onclick[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'download')]]"
+        rows = get_return_rows()
+        target = next(
+            (r for r in rows if r["report_id"] == str(current_report_id) and r["status"] == "SUCCESS"),
+            None,
         )
+        if target is None:
+            driver.switch_to.default_content()
+            raise RuntimeError(f"SUCCESS Report ID {current_report_id} ka exact row download ke liye nahi mila.")
+
+        row = target["row"]
+        print(f"   Exact SUCCESS row confirmed - Report ID: {current_report_id}")
+
+        # Inspect Element confirmed: label onclick="javascript:downloadReport("REPORT_ID", ...); return false;"
+        download_controls = row.find_elements(By.CSS_SELECTOR, "label[onclick*='downloadReport']")
         if not download_controls:
             download_controls = row.find_elements(
                 By.XPATH,
-                ".//*[@onclick and contains(translate(@onclick, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'download')]"
+                ".//label[contains(translate(@onclick, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'downloadreport')]"
             )
         if not download_controls:
-            candidates = row.find_elements(By.CSS_SELECTOR, "label, a, button, input, img, i, span")
-            for el in candidates:
-                try:
-                    meta = " ".join([
-                        el.get_attribute("onclick") or "", el.get_attribute("title") or "",
-                        el.get_attribute("aria-label") or "", el.get_attribute("alt") or "",
-                        el.get_attribute("class") or "",
-                    ]).lower()
-                    if "download" in meta or "downloadreport" in meta:
-                        download_controls.append(el)
-                except Exception:
-                    pass
-
-        if not download_controls:
-            raise RuntimeError("SUCCESS report mein Vinculum download icon/control nahi mila.")
+            driver.switch_to.default_content()
+            raise RuntimeError(f"SUCCESS Report ID {current_report_id} mein exact downloadReport control nahi mila.")
 
         download_control = download_controls[0]
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", download_control)
         time.sleep(0.5)
-
         try:
-            WebDriverWait(driver, 10).until(lambda d: download_control.is_displayed() and download_control.is_enabled())
-        except Exception:
-            pass
-
-        try:
-            download_control.click()
-        except Exception:
             driver.execute_script("arguments[0].click();", download_control)
+        except Exception:
+            download_control.click()
 
-        print(f"   Download initiated for Report ID: {matched_report_id}")
-
+        print(f"   Download button click ho gaya - Report ID: {current_report_id}")
+        driver.switch_to.default_content()
         print("12) Excel download hone ka wait...")
         downloaded_file = wait_for_download(DOWNLOAD_FOLDER, timeout=120, existing_files=files_before_download)
-
         if not downloaded_file:
             current_files = sorted(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")), key=os.path.getmtime, reverse=True)
             print("   Download folder files:", [os.path.basename(f) for f in current_files[:10]])
             raise RuntimeError("Excel download timeout ho gaya.")
+        print(f"   Download complete: {os.path.basename(downloaded_file)}")
 
         shutil.copy2(downloaded_file, OUTPUT_FILE)
 
