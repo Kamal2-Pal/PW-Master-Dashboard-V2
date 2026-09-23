@@ -1,5 +1,5 @@
 """
-Vinculum Returns (Inbound Enquiry) Extractor - GitHub Actions version
+Vinculum Returns (Inbound Enquiry) Extractor - GitHub Actions V5
 ----------------------------------------------------------------------
 Mirrors vinculum_extract_final.py's proven login/Pending-Report/download
 flow, but targets the WMS -> Inbound -> Inbound Enquiry screen instead of
@@ -403,12 +403,70 @@ def create_returns_export_request(driver, wait):
     print("   Data load hone ka wait (10 sec)...")
     time.sleep(10)
 
-    print("7) Detail Export click kar raha hoon (#downloadButton)...")
-    # Note: this button's internal id is "downloadButton" but it's visually
-    # labelled "Detail Export" and calls detailExportClickNew() - confirmed
-    # via inspect element.
-    detail_export_btn = wait.until(EC.element_to_be_clickable((By.ID, "downloadButton")))
-    detail_export_btn.click()
+    print("7) Detail Export click kar raha hoon (detailExportClickNew())...")
+
+    # IMPORTANT:
+    # Inspect Element shows id="downloadButton", but this id can be repeated
+    # in the grid. Do NOT blindly use By.ID("downloadButton"), because
+    # Selenium may click a different row/button. Identify the actual
+    # Detail Export button by its onclick handler + visible label.
+    detail_export_btn = None
+    detail_deadline = time.time() + 30
+
+    while time.time() < detail_deadline and detail_export_btn is None:
+        candidates = driver.find_elements(
+            By.XPATH,
+            "//button[contains(@onclick,'detailExportClickNew') and "
+            ".//label[contains(normalize-space(.),'Detail Export')]]"
+        )
+
+        for el in candidates:
+            try:
+                if el.is_displayed() and el.is_enabled():
+                    detail_export_btn = el
+                    break
+            except Exception:
+                continue
+
+        if detail_export_btn is None:
+            # Fallback to the confirmed id, but still require the button to
+            # visibly contain the Detail Export label.
+            for el in driver.find_elements(By.ID, "downloadButton"):
+                try:
+                    label_text = (el.text or "").strip().lower()
+                    onclick = (el.get_attribute("onclick") or "").lower()
+                    if (
+                        el.is_displayed()
+                        and el.is_enabled()
+                        and "detailexportclicknew" in onclick
+                        and "detail export" in label_text
+                    ):
+                        detail_export_btn = el
+                        break
+                except Exception:
+                    continue
+
+        if detail_export_btn is None:
+            time.sleep(1)
+
+    if detail_export_btn is None:
+        raise RuntimeError(
+            "Detail Export button nahi mila. "
+            "Confirmed onclick='detailExportClickNew()' + 'Detail Export' label "
+            "wala button locate nahi ho paaya."
+        )
+
+    driver.execute_script(
+        "arguments[0].scrollIntoView({block:'center'});",
+        detail_export_btn
+    )
+    time.sleep(0.5)
+    try:
+        driver.execute_script("arguments[0].click();", detail_export_btn)
+    except Exception:
+        detail_export_btn.click()
+
+    print("   Detail Export button click ho gaya.")
     time.sleep(2)
 
     print("8) Export fields select kar raha hoon...")
@@ -444,8 +502,9 @@ def create_returns_export_request(driver, wait):
 
         for fr in frames:
             try:
-                if not fr.is_displayed():
-                    continue
+                # Do not require iframe.is_displayed(). In headless Chrome,
+                # an iframe containing a dynamically opened export dialog can
+                # report as not displayed even though its DOM is accessible.
                 driver.switch_to.frame(fr)
                 found = find_element_recursive(locator, depth + 1, max_depth)
                 if found is not None:
@@ -665,13 +724,11 @@ def extract_vinculum_returns():
         current_report_id = None
 
         # ----------------------------------------------------
-        # CREATE RETURNS EXPORT REQUEST
-        # ----------------------------------------------------
-        create_returns_export_request(driver, wait)
-
-        # ----------------------------------------------------
         # PENDING REPORT - WAIT FOR SUCCESS, THEN DOWNLOAD
         # ----------------------------------------------------
+        # IMPORTANT: create the export request ONLY ONCE.
+        # We first capture the existing report IDs, then create one fresh
+        # request. This lets us reliably identify the exact new report.
         print("10) Pending Report open/monitor kar raha hoon...")
 
         def switch_to_pending_report():
@@ -679,8 +736,8 @@ def extract_vinculum_returns():
             time.sleep(0.5)
             for fr in driver.find_elements(By.TAG_NAME, "iframe"):
                 try:
-                    if not fr.is_displayed():
-                        continue
+                    # Headless Chrome can report iframe visibility differently
+                    # while the Pending Report frame is being refreshed.
                     driver.switch_to.frame(fr)
                     body_text = driver.find_element(By.TAG_NAME, "body").text.lower()
                     if "pending report" in body_text or "report names" in body_text or "report requests" in body_text:
@@ -713,7 +770,13 @@ def extract_vinculum_returns():
                     cells = row.find_elements(By.TAG_NAME, "td")
                     texts = [c.text.strip() for c in cells]
                     joined = " ".join(texts).upper().replace(" ", "")
-                    if "INBOUNDENQ" not in joined and "GENERATEINBOUND" not in joined:
+                    # Report grid may show either the generated function name
+                    # or the human-readable report name.
+                    if (
+                        "INBOUNDENQ" not in joined
+                        and "GENERATEINBOUND" not in joined
+                        and "INBOUNDENQUIRY" not in joined
+                    ):
                         continue
                     status_text = next(
                         (t.upper() for t in texts if t.upper() in {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}),
@@ -733,10 +796,11 @@ def extract_vinculum_returns():
 
         switch_to_pending_report()
         before_ids = {r["report_id"] for r in get_return_rows() if r["report_id"]}
+        print(f"   Existing return report IDs captured: {sorted(before_ids)[-10:]}")
         driver.switch_to.default_content()
 
         create_returns_export_request(driver, wait)
-        print("   Fresh return export request create ho gaya.")
+        print("   Fresh return export request create ho gaya (single request).")
         print("   Jab tak status SUCCESS nahi hota, download button nahi dabega.")
 
         current_report_id = None
