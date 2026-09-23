@@ -29,7 +29,6 @@ screenshot artifact will show exactly which step, same as before.
 import os
 import json
 import re
-import pandas as pd
 
 VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
 VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "")
@@ -37,6 +36,8 @@ VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "")
 import time
 import glob
 import zipfile
+import csv
+import xml.sax.saxutils as saxutils
 import shutil
 from datetime import datetime, timedelta
 
@@ -1049,73 +1050,158 @@ def extract_vinculum_returns():
         print(f"   Download complete: {os.path.basename(downloaded_file)}")
 
         # Vinculum's Detail Export can return CSV content even when the UI
-        # presents it as an Excel export. Do not copy that file directly to
-        # returns.xlsx because Excel will reject CSV bytes with an XLSX suffix.
+        # presents it as an Excel export. Do not copy CSV bytes directly to
+        # returns.xlsx because Excel will reject them.
         #
-        # Normalize every successful download into a genuine XLSX workbook.
-        # This also replaces the previous returns.xlsx instead of retaining
-        # stale data from an earlier run.
+        # This implementation deliberately uses ONLY Python standard-library
+        # modules. No pandas/openpyxl/extra dependency is required in GitHub
+        # Actions.
         try:
-            source_suffix = Path(downloaded_file).suffix.lower()
+            def read_csv_rows(path):
+                last_error = None
+                for enc in ("utf-8-sig", "utf-8", "cp1252"):
+                    try:
+                        with open(path, "r", encoding=enc, newline="") as fh:
+                            rows = list(csv.reader(fh))
+                        if rows:
+                            return rows
+                    except Exception as exc:
+                        last_error = exc
+                raise RuntimeError(f"Downloaded CSV read nahi ho paya: {last_error}")
 
-            if source_suffix in {".csv", ".txt"}:
-                df = pd.read_csv(
-                    downloaded_file,
-                    encoding="utf-8-sig",
-                    low_memory=False,
-                )
+            def date_in_current_month(value):
+                value = str(value or "").strip()
+                if not value:
+                    return True
+                candidates = [
+                    "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d",
+                    "%d/%m/%Y %H:%M:%S", "%d-%m-%Y %H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S",
+                ]
+                parsed = None
+                for fmt in candidates:
+                    try:
+                        parsed = datetime.strptime(value, fmt)
+                        break
+                    except ValueError:
+                        continue
+                if parsed is None:
+                    # Do not reject an unfamiliar Vinculum date format here.
+                    return True
+                now = datetime.now()
+                return parsed.year == now.year and parsed.month == now.month
+
+            def write_real_xlsx(rows, output_path):
+                if not rows:
+                    raise RuntimeError("Downloaded return report empty hai.")
+
+                def cell_xml(value):
+                    value = "" if value is None else str(value)
+                    return (
+                        '<c t="inlineStr"><is><t xml:space="preserve">'
+                        + saxutils.escape(value)
+                        + "</t></is></c>"
+                    )
+
+                sheet_rows = []
+                for row_num, row in enumerate(rows, 1):
+                    cells = "".join(cell_xml(v) for v in row)
+                    sheet_rows.append(f'<row r="{row_num}">{cells}</row>')
+
+                sheet_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <sheetData>
+                    %s
+                  </sheetData>
+                </worksheet>""" % "".join(sheet_rows)
+
+                content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                </Types>"""
+
+                root_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                </Relationships>"""
+
+                workbook_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <sheets>
+                    <sheet name="Returns" sheetId="1" r:id="rId1"/>
+                  </sheets>
+                </workbook>"""
+
+                workbook_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                </Relationships>"""
+
+                temp_output = output_path + ".tmp.xlsx"
+                with zipfile.ZipFile(temp_output, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr("[Content_Types].xml", content_types)
+                    zf.writestr("_rels/.rels", root_rels)
+                    zf.writestr("xl/workbook.xml", workbook_xml)
+                    zf.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+                    zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+
+                if not zipfile.is_zipfile(temp_output):
+                    raise RuntimeError("Generated returns.xlsx valid XLSX ZIP nahi hai.")
+
+                os.replace(temp_output, output_path)
+
+            source_is_real_xlsx = zipfile.is_zipfile(downloaded_file)
+
+            if source_is_real_xlsx:
+                # If Vinculum genuinely downloaded an XLSX, validate it and
+                # publish it directly.
+                with zipfile.ZipFile(downloaded_file, "r") as zf:
+                    bad_member = zf.testzip()
+                    if bad_member:
+                        raise RuntimeError(
+                            f"Downloaded XLSX corrupt hai: {bad_member}"
+                        )
+                os.replace(downloaded_file, OUTPUT_FILE)
+                row_count = "unknown"
             else:
-                try:
-                    df = pd.read_excel(downloaded_file)
-                except Exception:
-                    # Some Vinculum downloads have an unexpected extension
-                    # while their actual content is CSV.
-                    df = pd.read_csv(
-                        downloaded_file,
-                        encoding="utf-8-sig",
-                        low_memory=False,
-                    )
+                rows = read_csv_rows(downloaded_file)
+                if len(rows) < 2:
+                    raise RuntimeError("Downloaded return report empty hai.")
 
-            if df.empty:
-                raise RuntimeError("Downloaded return report empty hai.")
-
-            # The WMS filter is Creation Date = This Month. Validate the
-            # downloaded report before publishing it.
-            if "Created Date" in df.columns:
-                created = pd.to_datetime(
-                    df["Created Date"], errors="coerce", dayfirst=False
+                # Validate Creation Date = This Month before publishing.
+                header = [str(x).strip() for x in rows[0]]
+                created_idx = next(
+                    (i for i, name in enumerate(header)
+                     if name.lower() == "created date"),
+                    None,
                 )
-                valid_created = created.dropna()
 
-                if not valid_created.empty:
-                    now = datetime.now()
-                    outside_current_month = (
-                        (valid_created.dt.year != now.year)
-                        | (valid_created.dt.month != now.month)
-                    )
+                if created_idx is not None:
+                    invalid_dates = []
+                    for data_row in rows[1:]:
+                        value = data_row[created_idx] if created_idx < len(data_row) else ""
+                        if value and not date_in_current_month(value):
+                            invalid_dates.append(value)
+                            if len(invalid_dates) >= 5:
+                                break
 
-                    if outside_current_month.any():
+                    if invalid_dates:
                         raise RuntimeError(
                             "Downloaded return report mein current month ke "
-                            "bahar Created Date records mile; returns.xlsx "
-                            "publish nahi kiya."
+                            f"bahar Created Date records mile: {invalid_dates}. "
+                            "returns.xlsx publish nahi kiya."
                         )
 
-            # Write a real OOXML/XLSX file.
-            temp_output = OUTPUT_FILE + ".tmp.xlsx"
-            df.to_excel(temp_output, index=False, engine="openpyxl")
-
-            # Validate before replacing the live repository file.
-            if not zipfile.is_zipfile(temp_output):
-                raise RuntimeError(
-                    "Generated returns.xlsx valid XLSX ZIP nahi hai."
-                )
-
-            os.replace(temp_output, OUTPUT_FILE)
+                write_real_xlsx(rows, OUTPUT_FILE)
+                row_count = len(rows) - 1
 
             print(
                 f"   Real XLSX generated: {os.path.basename(OUTPUT_FILE)} "
-                f"({len(df):,} rows)"
+                f"({row_count} data rows)"
             )
 
         except Exception:
