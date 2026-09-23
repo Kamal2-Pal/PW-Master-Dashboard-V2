@@ -562,17 +562,42 @@ def create_returns_export_request(driver, wait):
     if export_window:
         driver.switch_to.window(export_window)
 
-    # find_element_recursive() leaves Selenium in the iframe containing the
-    # checkbox. Use the exact inspected checkbox and click it with JS so the
-    # site's own checkbox handler receives the click.
+    # IMPORTANT: The export dialog can re-render its field grid immediately
+    # after it appears. The Selenium WebElement returned by the recursive
+    # search can therefore become stale between "find" and "click".
+    # Do NOT call select_all_cb.is_selected() on that old WebElement.
+    # Re-query the live DOM inside the CURRENT iframe and click the current
+    # checkbox in the same JavaScript execution.
     try:
-        if not select_all_cb.is_selected():
-            driver.execute_script("arguments[0].click();", select_all_cb)
+        clicked = driver.execute_script("""
+            const cb = document.querySelector("#cb_dynamicFieldGrid");
+            if (!cb) return false;
+            if (!cb.checked) {
+                cb.click();
+            }
+            return !!cb.checked;
+        """)
+        if not clicked:
+            # One short retry in case the grid was re-rendering at this exact
+            # moment. This still uses a fresh DOM lookup, never the stale
+            # Selenium element captured above.
             time.sleep(1)
+            clicked = driver.execute_script("""
+                const cb = document.querySelector("#cb_dynamicFieldGrid");
+                if (!cb) return false;
+                if (!cb.checked) {
+                    cb.click();
+                }
+                return !!cb.checked;
+            """)
+        if not clicked:
+            raise RuntimeError(
+                "Live DOM mein #cb_dynamicFieldGrid mila nahi ya checked nahi hua."
+            )
         print("   Select-all checkbox click ho gaya.")
     except Exception as exc:
         raise RuntimeError(
-            "#cb_dynamicFieldGrid mila, lekin select-all click nahi ho paya."
+            "#cb_dynamicFieldGrid mila, lekin fresh DOM lookup se select-all click nahi ho paya."
         ) from exc
 
     print("9) Export click kar raha hoon...")
