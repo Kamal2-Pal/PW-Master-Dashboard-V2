@@ -705,9 +705,19 @@ async function fetchGoogleSheetData() {
           }
 
           if (orderId) {
-            googleSheetRemarksMap[orderId] = {
-              openRemark: openRemark,
-              breachRemark: breachRemark
+            // Normalize Order No so harmless spaces/case differences do not
+            // prevent a Google Sheet remark from matching the dashboard row.
+            const remarkOrderId = norm(orderId).replace(/\\s+/g,"").toUpperCase();
+            const existing = googleSheetRemarksMap[remarkOrderId] || {
+              openRemark: "",
+              breachRemark: ""
+            };
+
+            // A Google Sheet can contain the same Order No more than once.
+            // Do not let a later blank row overwrite a remark already found.
+            googleSheetRemarksMap[remarkOrderId] = {
+              openRemark: openRemark || existing.openRemark,
+              breachRemark: breachRemark || existing.breachRemark
             };
           }
         });
@@ -762,6 +772,7 @@ async function saveRemarkToDb(orderId, inputPrefix="") {
 
 function getEffectiveRemark(r, type = "general") {
   const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
+  const remarkOrderId = orderId.replace(/\\s+/g,"").toUpperCase();
   
   // Priority 1: Direct Supabase database edits
   if (savedDbRemarks[orderId]) {
@@ -769,15 +780,15 @@ function getEffectiveRemark(r, type = "general") {
   }
   
   // Priority 2: Google Sheets Live Column Mapping
-  if (googleSheetRemarksMap[orderId]) {
-    if (type === "open" && googleSheetRemarksMap[orderId].openRemark) {
-      return googleSheetRemarksMap[orderId].openRemark;
+  if (googleSheetRemarksMap[remarkOrderId]) {
+    if (type === "open" && googleSheetRemarksMap[remarkOrderId].openRemark) {
+      return googleSheetRemarksMap[remarkOrderId].openRemark;
     }
-    if (type === "breach" && googleSheetRemarksMap[orderId].breachRemark) {
-      return googleSheetRemarksMap[orderId].breachRemark;
+    if (type === "breach" && googleSheetRemarksMap[remarkOrderId].breachRemark) {
+      return googleSheetRemarksMap[remarkOrderId].breachRemark;
     }
-    if (googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark) {
-      return googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark;
+    if (googleSheetRemarksMap[remarkOrderId].openRemark || googleSheetRemarksMap[remarkOrderId].breachRemark) {
+      return googleSheetRemarksMap[remarkOrderId].openRemark || googleSheetRemarksMap[remarkOrderId].breachRemark;
     }
   }
 
