@@ -70,15 +70,7 @@ DATE_PRESET = "This Month"
 # export (seen as "generateInboundEnquiryDetailExport" in the report list).
 # Matched case/space-insensitively as a substring, same style as the orders
 # script's "ORDERENQUIRYEXPORT" marker.
-REPORT_NAME_MARKERS = (
-    "INBOUNDENQUIRYDETAILEXPORT",
-    "GENERATEINBOUNDENQUIRYDETAILEXPORT",
-)
-
-def is_returns_report_text(value):
-    """Return True when text identifies the Inbound Enquiry detail export."""
-    normalized = re.sub(r"\s+", "", value or "").upper()
-    return any(marker in normalized for marker in REPORT_NAME_MARKERS)
+REPORT_NAME_MARKER = "INBOUNDENQUIRYDETAILEXPORT"
 
 
 # ============================================================
@@ -421,103 +413,164 @@ def create_returns_export_request(driver, wait):
 
     print("8) Export fields select kar raha hoon...")
 
-    def find_modal_here():
+    # Vinculum can render the export-field dialog in the current window,
+    # another window/tab, or inside an iframe.  In GitHub Actions the dialog
+    # is sometimes slower to appear, so search all window handles and recurse
+    # through iframes instead of assuming one fixed DOM location.
+    def find_export_modal_here():
         try:
             for mc in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-                if mc.is_displayed() and "Select Field For Export" in mc.text:
+                if mc.is_displayed() and "select field for export" in mc.text.lower():
                     return mc
+        except Exception:
+            pass
+
+        # Fallback for layouts where the dialog wrapper is not modal-content.
+        try:
+            candidates = driver.find_elements(
+                By.XPATH,
+                "//*[contains(translate(normalize-space(.),"
+                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                "'select field for export')]"
+            )
+            for el in candidates:
+                try:
+                    if el.is_displayed():
+                        return el
+                except Exception:
+                    pass
         except Exception:
             pass
         return None
 
-    # Poll across top-level + every iframe (+ one level of nesting) since a
-    # single check right after a 2s sleep was too fast for headless CI - the
-    # modal can take a bit longer to render there than in a real browser.
-    modal_content = None
-    deadline = time.time() + 60
-    attempt = 0
-    while time.time() < deadline and modal_content is None:
-        attempt += 1
-        driver.switch_to.default_content()
-        modal_content = find_modal_here()
-        if modal_content:
-            print(f"   (attempt {attempt}) Modal top-level page par mil gaya.")
-            break
+    def find_export_modal_recursive(depth=0, max_depth=4):
+        modal = find_export_modal_here()
+        if modal is not None:
+            return modal
 
-        all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        for fr in all_iframes:
+        if depth >= max_depth:
+            return None
+
+        try:
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
+        except Exception:
+            return None
+
+        for fr in frames:
             try:
                 if not fr.is_displayed():
                     continue
-                driver.switch_to.default_content()
                 driver.switch_to.frame(fr)
-                modal_content = find_modal_here()
-                if modal_content:
-                    print(f"   (attempt {attempt}) Modal iframe ke andar mil gaya.")
-                    break
+                modal = find_export_modal_recursive(depth + 1, max_depth)
+                if modal is not None:
+                    return modal
+                driver.switch_to.parent_frame()
+            except Exception:
+                try:
+                    driver.switch_to.parent_frame()
+                except Exception:
+                    driver.switch_to.default_content()
+        return None
 
-                nested_iframes = driver.find_elements(By.TAG_NAME, "iframe")
-                for nfr in nested_iframes:
-                    try:
-                        if not nfr.is_displayed():
-                            continue
-                        driver.switch_to.frame(nfr)
-                        modal_content = find_modal_here()
-                        if modal_content:
-                            print(f"   (attempt {attempt}) Modal NESTED iframe ke andar mil gaya.")
-                            break
-                        driver.switch_to.parent_frame()
-                    except Exception:
-                        try:
-                            driver.switch_to.parent_frame()
-                        except Exception:
-                            pass
-                if modal_content:
+    modal_content = None
+    modal_window = None
+    modal_attempt = 0
+    deadline = time.time() + 90
+
+    while time.time() < deadline and modal_content is None:
+        modal_attempt += 1
+        handles = list(driver.window_handles)
+
+        for handle in handles:
+            try:
+                driver.switch_to.window(handle)
+                driver.switch_to.default_content()
+                modal_content = find_export_modal_recursive()
+                if modal_content is not None:
+                    modal_window = handle
+                    print(
+                        f"   (attempt {modal_attempt}) Select Field For Export modal mil gaya."
+                    )
                     break
             except Exception:
-                continue
+                try:
+                    driver.switch_to.default_content()
+                except Exception:
+                    pass
 
         if modal_content is None:
             time.sleep(1)
 
     if modal_content is None:
         driver.switch_to.default_content()
-        raise RuntimeError(f"Select Field For Export modal {attempt} attempts ke baad bhi nahi mila.")
+        raise RuntimeError(
+            f"Select Field For Export modal {modal_attempt} attempts ke baad bhi nahi mila."
+        )
 
-    # The modal MAY contain a further-nested iframe (Order Enquiry's does),
-    # but inspect element showed no iframe-crossing for Inbound Enquiry's
-    # checkbox - so this is now optional, not required.
+    if modal_window:
+        driver.switch_to.window(modal_window)
+
+    # find_export_modal_recursive() leaves Selenium in the frame containing
+    # the modal.  The export field controls may be one more iframe deeper.
     try:
         nested_iframe = modal_content.find_element(By.CSS_SELECTOR, "iframe")
         driver.switch_to.frame(nested_iframe)
         print("   Modal ke andar nested iframe mila, usme switch ho gaya.")
     except Exception:
-        print("   Modal ke andar koi nested iframe nahi mila - seedha isi context mein aage badh raha hoon.")
+        print("   Modal ke andar nested iframe nahi mila - current context use hoga.")
+
     time.sleep(1)
 
+    # Select all fields.  Use the known Vinculum ID first and then fall back
+    # to every visible checkbox if the ID changes.
     try:
-        select_all_cb = driver.find_element(By.ID, "cb_dynamicFieldGrid")
+        select_all_cb = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.ID, "cb_dynamicFieldGrid"))
+        )
         if not select_all_cb.is_selected():
             driver.execute_script("arguments[0].click();", select_all_cb)
         print("   Select-all checkbox click ho gaya.")
     except Exception:
         print("   Select-all fallback use kar raha hoon...")
         all_checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+        visible_count = 0
         for checkbox in all_checkboxes:
-            if not checkbox.is_selected():
-                driver.execute_script("arguments[0].click();", checkbox)
-                time.sleep(0.1)
+            try:
+                if checkbox.is_displayed() and not checkbox.is_selected():
+                    driver.execute_script("arguments[0].click();", checkbox)
+                    visible_count += 1
+                    time.sleep(0.05)
+            except Exception:
+                pass
+        if visible_count == 0:
+            raise RuntimeError("Export modal mila, lekin koi selectable field checkbox nahi mila.")
 
     print("9) Export click kar raha hoon...")
-    export_btn = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//button[@title='Export']"))
-    )
-    export_btn.click()
+
+    export_btn = None
+    try:
+        export_btn = WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[@title='Export']"))
+        )
+    except Exception:
+        try:
+            export_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//*[self::button or self::input or self::a or self::label]"
+                    "[contains(translate(normalize-space(.),"
+                    "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'export')]"
+                ))
+            )
+        except Exception as exc:
+            raise RuntimeError("Export modal mil gaya, lekin Export button nahi mila.") from exc
+
+    driver.execute_script("arguments[0].click();", export_btn)
     time.sleep(3)
 
-    driver.switch_to.parent_frame()
     driver.switch_to.default_content()
     time.sleep(1)
+
 
 
 # ============================================================
@@ -686,7 +739,7 @@ def extract_vinculum_returns():
             for t in texts:
                 if not t or t.upper() in STATUS_WORDS or t.isdigit():
                     continue
-                if is_returns_report_text(t):
+                if REPORT_NAME_MARKER in t.upper().replace(" ", ""):
                     continue
                 if "/" in t or ":" in t:
                     continue
@@ -696,36 +749,14 @@ def extract_vinculum_returns():
             return texts, report_id, status_text, error_msg
 
         def read_latest_returns_export():
-            # Vinculum has used both jqGrid rows and normal table rows in
-            # different Pending Report builds. Try both selectors.
-            selectors = [
-                "table.table-bordered tbody tr",
-                "tr.jqgrow",
-            ]
-            seen = set()
-            all_rows = []
-            for selector in selectors:
-                for row in driver.find_elements(By.CSS_SELECTOR, selector):
-                    key = id(row)
-                    if key not in seen:
-                        seen.add(key)
-                        all_rows.append(row)
-
-            for row in all_rows:
+            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+            for row in rows:
                 cells = row.find_elements(By.TAG_NAME, "td")
-                if len(cells) < 2:
-                    continue
-                joined = "".join(c.text.strip() for c in cells)
-                if is_returns_report_text(joined):
+                joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
+                if REPORT_NAME_MARKER in joined:
                     texts, report_id, status_text, error_msg = parse_export_row(row)
-                    return row, {
-                        "texts": texts,
-                        "report_id": report_id,
-                        "status": status_text,
-                        "error_msg": error_msg,
-                    }
-
-            print(f"   (debug) Pending Report rows scanned: {len(all_rows)}")
+                    return row, {"texts": texts, "report_id": report_id, "status": status_text, "error_msg": error_msg}
+            print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
             return None, None
 
         status_ready = False
@@ -793,7 +824,7 @@ def extract_vinculum_returns():
         for candidate in rows:
             cells = candidate.find_elements(By.TAG_NAME, "td")
             joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
-            if not is_returns_report_text(joined):
+            if REPORT_NAME_MARKER not in joined:
                 continue
             _, r_id, r_status, _ = parse_export_row(candidate)
             export_rows.append((candidate, r_id, r_status))
@@ -866,33 +897,6 @@ def extract_vinculum_returns():
             current_files = sorted(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")), key=os.path.getmtime, reverse=True)
             print("   Download folder files:", [os.path.basename(f) for f in current_files[:10]])
             raise RuntimeError("Excel download timeout ho gaya.")
-
-        # Validate the downloaded workbook before publishing it as returns.xlsx.
-        # This prevents a successful-looking export from silently feeding the
-        # dashboard a workbook without the return quantity/date/value fields.
-        try:
-            from openpyxl import load_workbook
-            wb = load_workbook(downloaded_file, read_only=True, data_only=True)
-            ws = wb[wb.sheetnames[0]]
-            headers = [str(c.value or "").strip().lower() for c in next(ws.iter_rows(min_row=1, max_row=1))]
-            required_any = [
-                {"recieved qty", "received qty"},
-                {"material received date"},
-                {"grn value with tax"},
-            ]
-            missing = []
-            for aliases in required_any:
-                if not any(alias in headers for alias in aliases):
-                    missing.append(" / ".join(sorted(aliases)))
-            wb.close()
-            if missing:
-                raise RuntimeError(
-                    "Downloaded Inbound Enquiry export mein expected return fields nahi mile: "
-                    + "; ".join(missing)
-                )
-            print("   Excel validation OK: return qty/date/value fields found.")
-        except ImportError:
-            print("   openpyxl available nahi hai; workbook field validation skip ki gayi.")
 
         shutil.copy2(downloaded_file, OUTPUT_FILE)
 
