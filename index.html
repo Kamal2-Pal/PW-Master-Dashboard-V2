@@ -1172,11 +1172,19 @@ function renderReturnsTab(){
   const returnQtyPct = totalShippedQty ? (totalReturnQty/totalShippedQty*100) : 0;
   const returnValuePct = totalShippedValue ? (totalReturnValue/totalShippedValue*100) : 0;
 
+  function formatReturnValue(value){
+    const n = Number(value || 0);
+    if(Math.abs(n) >= 1000000000) return "₹" + (n / 1000000000).toFixed(2) + "B";
+    if(Math.abs(n) >= 1000000) return "₹" + (n / 1000000).toFixed(2) + "M";
+    if(Math.abs(n) >= 1000) return "₹" + (n / 1000).toFixed(2) + "K";
+    return "₹" + n.toLocaleString(undefined,{maximumFractionDigits:2});
+  }
+
   $("returnsKpis").innerHTML=[
     ["Total Shipped Qty",totalShippedQty.toLocaleString()],
-    ["Total Shipped Value",totalShippedValue.toLocaleString()],
+    ["Total Shipped Value",formatReturnValue(totalShippedValue)],
     ["Total Return Qty",totalReturnQty.toLocaleString()],
-    ["Total Return Value",totalReturnValue.toLocaleString()],
+    ["Total Return Value",formatReturnValue(totalReturnValue)],
     ["Return Qty %",returnQtyPct.toFixed(1)+"%"],
     ["Return Value %",returnValuePct.toFixed(1)+"%"]
   ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
