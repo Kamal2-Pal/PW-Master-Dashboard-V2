@@ -70,7 +70,15 @@ DATE_PRESET = "This Month"
 # export (seen as "generateInboundEnquiryDetailExport" in the report list).
 # Matched case/space-insensitively as a substring, same style as the orders
 # script's "ORDERENQUIRYEXPORT" marker.
-REPORT_NAME_MARKER = "INBOUNDENQUIRYDETAILEXPORT"
+REPORT_NAME_MARKERS = (
+    "INBOUNDENQUIRYDETAILEXPORT",
+    "GENERATEINBOUNDENQUIRYDETAILEXPORT",
+)
+
+def is_returns_report_text(value):
+    """Return True when text identifies the Inbound Enquiry detail export."""
+    normalized = re.sub(r"\s+", "", value or "").upper()
+    return any(marker in normalized for marker in REPORT_NAME_MARKERS)
 
 
 # ============================================================
@@ -426,7 +434,7 @@ def create_returns_export_request(driver, wait):
     # single check right after a 2s sleep was too fast for headless CI - the
     # modal can take a bit longer to render there than in a real browser.
     modal_content = None
-    deadline = time.time() + 20
+    deadline = time.time() + 60
     attempt = 0
     while time.time() < deadline and modal_content is None:
         attempt += 1
@@ -678,7 +686,7 @@ def extract_vinculum_returns():
             for t in texts:
                 if not t or t.upper() in STATUS_WORDS or t.isdigit():
                     continue
-                if REPORT_NAME_MARKER in t.upper().replace(" ", ""):
+                if is_returns_report_text(t):
                     continue
                 if "/" in t or ":" in t:
                     continue
@@ -688,14 +696,36 @@ def extract_vinculum_returns():
             return texts, report_id, status_text, error_msg
 
         def read_latest_returns_export():
-            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
-            for row in rows:
+            # Vinculum has used both jqGrid rows and normal table rows in
+            # different Pending Report builds. Try both selectors.
+            selectors = [
+                "table.table-bordered tbody tr",
+                "tr.jqgrow",
+            ]
+            seen = set()
+            all_rows = []
+            for selector in selectors:
+                for row in driver.find_elements(By.CSS_SELECTOR, selector):
+                    key = id(row)
+                    if key not in seen:
+                        seen.add(key)
+                        all_rows.append(row)
+
+            for row in all_rows:
                 cells = row.find_elements(By.TAG_NAME, "td")
-                joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
-                if REPORT_NAME_MARKER in joined:
+                if len(cells) < 2:
+                    continue
+                joined = "".join(c.text.strip() for c in cells)
+                if is_returns_report_text(joined):
                     texts, report_id, status_text, error_msg = parse_export_row(row)
-                    return row, {"texts": texts, "report_id": report_id, "status": status_text, "error_msg": error_msg}
-            print(f"   (debug) tr.jqgrow rows mile: {len(rows)}")
+                    return row, {
+                        "texts": texts,
+                        "report_id": report_id,
+                        "status": status_text,
+                        "error_msg": error_msg,
+                    }
+
+            print(f"   (debug) Pending Report rows scanned: {len(all_rows)}")
             return None, None
 
         status_ready = False
@@ -763,7 +793,7 @@ def extract_vinculum_returns():
         for candidate in rows:
             cells = candidate.find_elements(By.TAG_NAME, "td")
             joined = "".join(c.text.strip() for c in cells).upper().replace(" ", "")
-            if REPORT_NAME_MARKER not in joined:
+            if not is_returns_report_text(joined):
                 continue
             _, r_id, r_status, _ = parse_export_row(candidate)
             export_rows.append((candidate, r_id, r_status))
@@ -837,6 +867,33 @@ def extract_vinculum_returns():
             print("   Download folder files:", [os.path.basename(f) for f in current_files[:10]])
             raise RuntimeError("Excel download timeout ho gaya.")
 
+        # Validate the downloaded workbook before publishing it as returns.xlsx.
+        # This prevents a successful-looking export from silently feeding the
+        # dashboard a workbook without the return quantity/date/value fields.
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(downloaded_file, read_only=True, data_only=True)
+            ws = wb[wb.sheetnames[0]]
+            headers = [str(c.value or "").strip().lower() for c in next(ws.iter_rows(min_row=1, max_row=1))]
+            required_any = [
+                {"recieved qty", "received qty"},
+                {"material received date"},
+                {"grn value with tax"},
+            ]
+            missing = []
+            for aliases in required_any:
+                if not any(alias in headers for alias in aliases):
+                    missing.append(" / ".join(sorted(aliases)))
+            wb.close()
+            if missing:
+                raise RuntimeError(
+                    "Downloaded Inbound Enquiry export mein expected return fields nahi mile: "
+                    + "; ".join(missing)
+                )
+            print("   Excel validation OK: return qty/date/value fields found.")
+        except ImportError:
+            print("   openpyxl available nahi hai; workbook field validation skip ki gayi.")
+
         shutil.copy2(downloaded_file, OUTPUT_FILE)
 
         generated_at = datetime.utcnow().isoformat() + "Z"
@@ -859,4 +916,4 @@ def extract_vinculum_returns():
 
 
 if __name__ == "__main__":
-    extract_vinculum_returns()s
+    extract_vinculum_returns()
