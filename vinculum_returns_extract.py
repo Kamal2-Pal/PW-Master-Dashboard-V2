@@ -29,12 +29,14 @@ screenshot artifact will show exactly which step, same as before.
 import os
 import json
 import re
+import pandas as pd
 
 VINCULUM_USERNAME = os.getenv("VINCULUM_USERNAME", "").strip()
 VINCULUM_PASSWORD = os.getenv("VINCULUM_PASSWORD", "")
 
 import time
 import glob
+import zipfile
 import shutil
 from datetime import datetime, timedelta
 
@@ -1046,7 +1048,84 @@ def extract_vinculum_returns():
             raise RuntimeError("Excel download timeout ho gaya.")
         print(f"   Download complete: {os.path.basename(downloaded_file)}")
 
-        shutil.copy2(downloaded_file, OUTPUT_FILE)
+        # Vinculum's Detail Export can return CSV content even when the UI
+        # presents it as an Excel export. Do not copy that file directly to
+        # returns.xlsx because Excel will reject CSV bytes with an XLSX suffix.
+        #
+        # Normalize every successful download into a genuine XLSX workbook.
+        # This also replaces the previous returns.xlsx instead of retaining
+        # stale data from an earlier run.
+        try:
+            source_suffix = Path(downloaded_file).suffix.lower()
+
+            if source_suffix in {".csv", ".txt"}:
+                df = pd.read_csv(
+                    downloaded_file,
+                    encoding="utf-8-sig",
+                    low_memory=False,
+                )
+            else:
+                try:
+                    df = pd.read_excel(downloaded_file)
+                except Exception:
+                    # Some Vinculum downloads have an unexpected extension
+                    # while their actual content is CSV.
+                    df = pd.read_csv(
+                        downloaded_file,
+                        encoding="utf-8-sig",
+                        low_memory=False,
+                    )
+
+            if df.empty:
+                raise RuntimeError("Downloaded return report empty hai.")
+
+            # The WMS filter is Creation Date = This Month. Validate the
+            # downloaded report before publishing it.
+            if "Created Date" in df.columns:
+                created = pd.to_datetime(
+                    df["Created Date"], errors="coerce", dayfirst=False
+                )
+                valid_created = created.dropna()
+
+                if not valid_created.empty:
+                    now = datetime.now()
+                    outside_current_month = (
+                        (valid_created.dt.year != now.year)
+                        | (valid_created.dt.month != now.month)
+                    )
+
+                    if outside_current_month.any():
+                        raise RuntimeError(
+                            "Downloaded return report mein current month ke "
+                            "bahar Created Date records mile; returns.xlsx "
+                            "publish nahi kiya."
+                        )
+
+            # Write a real OOXML/XLSX file.
+            temp_output = OUTPUT_FILE + ".tmp.xlsx"
+            df.to_excel(temp_output, index=False, engine="openpyxl")
+
+            # Validate before replacing the live repository file.
+            if not zipfile.is_zipfile(temp_output):
+                raise RuntimeError(
+                    "Generated returns.xlsx valid XLSX ZIP nahi hai."
+                )
+
+            os.replace(temp_output, OUTPUT_FILE)
+
+            print(
+                f"   Real XLSX generated: {os.path.basename(OUTPUT_FILE)} "
+                f"({len(df):,} rows)"
+            )
+
+        except Exception:
+            try:
+                temp_output = OUTPUT_FILE + ".tmp.xlsx"
+                if os.path.exists(temp_output):
+                    os.remove(temp_output)
+            except Exception:
+                pass
+            raise
 
         generated_at = datetime.utcnow().isoformat() + "Z"
         with open(META_FILE, "w") as f:
