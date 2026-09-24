@@ -674,6 +674,10 @@ function mergeAndDeduplicate(historyRows, currentRows) {
 }
 
 // Fetch Google Sheets Data
+function normalizeRemarkOrderId(value) {
+  return norm(value).replace(/\s+/g, "").toUpperCase();
+}
+
 async function fetchGoogleSheetData() {
   if (!IS_LIVE_GITHUB_DASHBOARD) {
     googleSheetRemarksMap = {};
@@ -694,28 +698,35 @@ async function fetchGoogleSheetData() {
           const keys = Object.keys(row);
           if (keys.length === 0) return;
 
-          // Column POSITION is the source of truth (A=Order no, B=Open Order
-          // remarks, C=TAT Breach Remarks) - keyword matching was unreliable
-          // here because "Open Order remarks" itself contains the word
-          // "order", which used to wrongly overwrite the Order No value.
+          // Google Sheet source: A = Order No, B = Open Order remarks,
+          // C = TAT Breach Remarks. Use positions first, with header-based
+          // fallback so a changed/blank header cannot break the mapping.
           let orderId = keys[0] ? norm(row[keys[0]]) : "";
           let openRemark = keys[1] ? norm(row[keys[1]]) : "";
           let breachRemark = keys[2] ? norm(row[keys[2]]) : "";
 
-          // Fallback only if column A genuinely has no value: look for a
-          // header that IS an order-id column (not just contains "order").
-          if (!orderId) {
-            const idKey = keys.find(k => {
-              const c = k.trim().toLowerCase().replace(/[^a-z]/g, "");
-              return c === "orderno" || c === "orderid" || c === "order";
-            });
-            if (idKey) orderId = norm(row[idKey]);
-          }
+          const normalizedHeaders = keys.map(k => ({
+            key: k,
+            norm: k.trim().toLowerCase().replace(/[^a-z]/g, "")
+          }));
+          const idKey = normalizedHeaders.find(x =>
+            x.norm === "orderno" || x.norm === "orderid" || x.norm === "order"
+          );
+          const openKey = normalizedHeaders.find(x =>
+            x.norm === "openorderremarks" || x.norm === "openremarks" || x.norm === "openorderremark"
+          );
+          const breachKey = normalizedHeaders.find(x =>
+            x.norm === "tatbreachremarks" || x.norm === "breachremarks" || x.norm === "tatbreachremark"
+          );
+
+          if (!orderId && idKey) orderId = norm(row[idKey.key]);
+          if (!openRemark && openKey) openRemark = norm(row[openKey.key]);
+          if (!breachRemark && breachKey) breachRemark = norm(row[breachKey.key]);
 
           if (orderId) {
             // Normalize Order No so harmless spaces/case differences do not
             // prevent a Google Sheet remark from matching the dashboard row.
-            const remarkOrderId = norm(orderId).replace(/\\s+/g,"").toUpperCase();
+            const remarkOrderId = normalizeRemarkOrderId(orderId);
             const existing = googleSheetRemarksMap[remarkOrderId] || {
               openRemark: "",
               breachRemark: ""
@@ -780,7 +791,7 @@ async function saveRemarkToDb(orderId, inputPrefix="") {
 
 function getEffectiveRemark(r, type = "general") {
   const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
-  const remarkOrderId = orderId.replace(/\\s+/g,"").toUpperCase();
+  const remarkOrderId = normalizeRemarkOrderId(orderId);
   
   // Priority 1: Direct Supabase database edits
   if (savedDbRemarks[orderId]) {
