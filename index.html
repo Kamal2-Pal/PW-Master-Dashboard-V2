@@ -343,7 +343,7 @@ const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "PW-Master-Dashboard-V2";
 
 // Updated Google Sheet Published CSV Link
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?gid=1507121858&single=true&output=csv&range=A:C";
+const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?gid=1507121858&single=true&output=csv";
 // Only contact Google Sheets when running on the real GitHub Pages dashboard.
 // ChatGPT Preview/local preview environments should never trigger the external-network permission popup.
 const IS_LIVE_GITHUB_DASHBOARD = (location.hostname === "kamal2-pal.github.io");
@@ -684,70 +684,72 @@ async function fetchGoogleSheetData() {
     return;
   }
   try {
-    // Read only Columns A:C from the NEW published Google Sheet.
-    // This keeps the sync lightweight and ensures rows far down the sheet
-    // (e.g. row 2209) are included; there is no 1000-row client-side limit.
     const url = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
-    const response = await fetch(url, {cache:"no-store"});
-    if(!response.ok) {
-      console.warn("Google Sheet HTTP error:", response.status);
-      return;
-    }
+    const response = await fetch(url);
+    if(!response.ok) return;
     const csvText = await response.text();
+    
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        googleSheetRemarksMap = {};
+        results.data.forEach(row => {
+          const keys = Object.keys(row);
+          if (keys.length === 0) return;
 
-    // IMPORTANT: parse as raw rows instead of header:true. The dashboard only
-    // needs fixed Google Sheet positions A/B/C, and header:true can become
-    // unreliable when a published sheet has blank/changed headers.
-    await new Promise((resolve) => {
-      Papa.parse(csvText, {
-        header: false,
-        skipEmptyLines: true,
-        complete: function(results) {
-          const nextMap = {};
-          const rows = Array.isArray(results.data) ? results.data : [];
+          // Google Sheet source: A = Order No, B = Open Order remarks,
+          // C = TAT Breach Remarks. Use positions first, with header-based
+          // fallback so a changed/blank header cannot break the mapping.
+          let orderId = keys[0] ? norm(row[keys[0]]) : "";
+          let openRemark = keys[1] ? norm(row[keys[1]]) : "";
+          let breachRemark = keys[2] ? norm(row[keys[2]]) : "";
 
-          rows.forEach((row, index) => {
-            if (!Array.isArray(row)) return;
+          const normalizedHeaders = keys.map(k => ({
+            key: k,
+            norm: k.trim().toLowerCase().replace(/[^a-z]/g, "")
+          }));
+          const idKey = normalizedHeaders.find(x =>
+            x.norm === "orderno" || x.norm === "orderid" || x.norm === "order"
+          );
+          const openKey = normalizedHeaders.find(x =>
+            x.norm === "openorderremarks" || x.norm === "openremarks" || x.norm === "openorderremark"
+          );
+          const breachKey = normalizedHeaders.find(x =>
+            x.norm === "tatbreachremarks" || x.norm === "breachremarks" || x.norm === "tatbreachremark"
+          );
 
-            const orderId = norm(row[0]);       // Column A
-            const openRemark = norm(row[1]);    // Column B
-            const breachRemark = norm(row[2]); // Column C
-            if (!orderId) return;
+          if (!orderId && idKey) orderId = norm(row[idKey.key]);
+          if (!openRemark && openKey) openRemark = norm(row[openKey.key]);
+          if (!breachRemark && breachKey) breachRemark = norm(row[breachKey.key]);
 
-            // Skip a header row if present.
-            const headerText = orderId.toLowerCase().replace(/[^a-z0-9]/g, "");
-            if (index === 0 && (headerText === "orderno" || headerText === "orderid" || headerText === "order")) return;
-
+          if (orderId) {
+            // Normalize Order No so harmless spaces/case differences do not
+            // prevent a Google Sheet remark from matching the dashboard row.
             const remarkOrderId = normalizeRemarkOrderId(orderId);
-            const existing = nextMap[remarkOrderId] || {openRemark:"", breachRemark:""};
+            const existing = googleSheetRemarksMap[remarkOrderId] || {
+              openRemark: "",
+              breachRemark: ""
+            };
 
-            // Duplicate Order Nos are allowed. Never let a later blank value
-            // erase a populated remark already found in the sheet.
-            nextMap[remarkOrderId] = {
+            // A Google Sheet can contain the same Order No more than once.
+            // Do not let a later blank row overwrite a remark already found.
+            googleSheetRemarksMap[remarkOrderId] = {
               openRemark: openRemark || existing.openRemark,
               breachRemark: breachRemark || existing.breachRemark
             };
-          });
-
-          googleSheetRemarksMap = nextMap;
-          console.log("Google Sheet remarks synced:", Object.keys(nextMap).length, "orders");
-
-          if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
-            applySlaFilters();
           }
-          resolve();
-        },
-        error: function(error) {
-          console.warn("Google Sheet CSV parse error:", error);
-          resolve();
+        });
+
+        if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
+          applySlaFilters();
         }
-      });
+      }
     });
   } catch (err) {
     console.warn("Google Sheet sync error:", err);
   }
 }
-
 
 // Fetch DB Remarks
 async function fetchSavedDbRemarks() {
@@ -1598,10 +1600,10 @@ async function checkForNewData(){
 
 setInterval(checkForNewData, 30 * 60 * 1000); // check every 30 minutes
 
-// Live Google Sheet Refresh Interval (Every 30 Seconds)
+// Live Google Sheet Refresh Interval (Every 5 Seconds)
 setInterval(() => {
   if (IS_LIVE_GITHUB_DASHBOARD) fetchGoogleSheetData();
-}, 30000);
+}, 5000);
 </script>
 </body>
 </html>
