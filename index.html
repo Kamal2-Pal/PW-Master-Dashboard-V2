@@ -233,6 +233,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
       </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Required Orders</th><th>Zoho DOC No. Available</th><th>Missing DOC No.</th></tr></thead><tbody id="zohoDateTbody"></tbody></table></div>
+    <div id="zohoDateShowMoreWrap" style="display:none;text-align:center;margin-top:10px;"><button id="zohoDateShowMoreBtn" type="button" onclick="toggleZohoDateHistory()">Show More</button></div>
   </section>
 
   <section class="zoho-section">
@@ -1052,6 +1053,7 @@ function populateZohoSummaryFilters(requiredRows){
 }
 
 function clearZohoDateFilter(){
+  zohoDateHistoryExpanded=false;
   if($("zohoDateFilter")) $("zohoDateFilter").value="";
   if($("zohoDateSectionMonthFilter")) $("zohoDateSectionMonthFilter").value="";
   renderZohoDocs();
@@ -1223,6 +1225,13 @@ function renderReturnsTab(){
   }).join("") || `<tr><td colspan="7" class="muted">No data available.</td></tr>`;
 }
 
+let zohoDateHistoryExpanded = false;
+
+function toggleZohoDateHistory(){
+  zohoDateHistoryExpanded = !zohoDateHistoryExpanded;
+  renderZohoDocs();
+}
+
 function renderZohoDocs(){
   const source = current && current.length ? current : orderRows;
   const isCancelledClosed = r => { const s=norm(get(r,["Status"])).toLowerCase(); return s==="cancelled"||s==="closed"; };
@@ -1296,9 +1305,36 @@ function renderZohoDocs(){
   const dateRows = dateFilter ? requiredOrders.filter(r=>dateOf(r)===dateFilter) : requiredOrders;
   const monthRows = monthFilter ? requiredOrders.filter(r=>dateOf(r).slice(0,7)===monthFilter) : requiredOrders;
 
-  $("zohoDateTbody").innerHTML=groupSummary(dateRows,dateOf).map(([d,x])=>
+  // Date-wise summary: by default show only the current month so the Zoho
+  // section stays compact. Older months remain available through Show More.
+  // If the user selects a month/date filter, that selection takes priority.
+  const currentMonth = todayDateKey().slice(0,7);
+  const groupedDateRows = groupSummary(dateRows,dateOf);
+  let visibleDateRows = groupedDateRows;
+  let hasHiddenDateHistory = false;
+
+  if(!dateFilter){
+    if(monthFilter){
+      visibleDateRows = groupedDateRows;
+    }else if(zohoDateHistoryExpanded){
+      visibleDateRows = groupedDateRows;
+    }else{
+      visibleDateRows = groupedDateRows.filter(([d])=>d.startsWith(currentMonth));
+      hasHiddenDateHistory = groupedDateRows.length > visibleDateRows.length;
+    }
+  }
+
+  $("zohoDateTbody").innerHTML=visibleDateRows.map(([d,x])=>
     `<tr><td>${esc(d)}</td><td>${x.orders.size.toLocaleString()}</td><td>${x.docs.size.toLocaleString()}</td><td class="bad">${x.missing.size.toLocaleString()}</td></tr>`
-  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected date.</td></tr>`;
+  ).join("") || `<tr><td colspan="4" class="muted">No TI/BOS records found for the selected date/month.</td></tr>`;
+
+  const showMoreWrap = $("zohoDateShowMoreWrap");
+  const showMoreBtn = $("zohoDateShowMoreBtn");
+  if(showMoreWrap && showMoreBtn){
+    const shouldShowButton = !dateFilter && !monthFilter && (hasHiddenDateHistory || zohoDateHistoryExpanded);
+    showMoreWrap.style.display = shouldShowButton ? "block" : "none";
+    showMoreBtn.textContent = zohoDateHistoryExpanded ? "Show Less" : "Show More";
+  }
 
   // Missing Zoho DOC No. — Order-wise Detail. Only populated when the user
   // has actually picked a specific date (not for "All Dates"), per request:
@@ -1331,8 +1367,8 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 
 ["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
-$("zohoDateFilter").addEventListener("change",renderZohoDocs);
-$("zohoDateSectionMonthFilter").addEventListener("change",()=>{ $("zohoDateFilter").value=""; renderZohoDocs(); });
+$("zohoDateFilter").addEventListener("change",()=>{ zohoDateHistoryExpanded=false; renderZohoDocs(); });
+$("zohoDateSectionMonthFilter").addEventListener("change",()=>{ zohoDateHistoryExpanded=false; $("zohoDateFilter").value=""; renderZohoDocs(); });
 $("b2bShipDateFilter").addEventListener("change",renderB2BReports);
 $("zohoMonthFilter").addEventListener("change",renderZohoDocs);
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
