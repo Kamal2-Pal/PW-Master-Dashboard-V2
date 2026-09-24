@@ -344,6 +344,9 @@ const GITHUB_REPO_NAME = "PW-Master-Dashboard-V2";
 
 // Updated Google Sheet Published CSV Link
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1PokS-kQwkGTVsLLFCOz84P0okZWHoQQslZMabzSoKpE/export?format=csv&gid=1507121858";
+// Only contact Google Sheets when running on the real GitHub Pages dashboard.
+// ChatGPT Preview/local preview environments should never trigger the external-network permission popup.
+const IS_LIVE_GITHUB_DASHBOARD = (location.hostname === "kamal2-pal.github.io");
 
 let savedDbRemarks = {};
 let googleSheetRemarksMap = {}; // { orderId: { openRemark, breachRemark } }
@@ -672,6 +675,10 @@ function mergeAndDeduplicate(historyRows, currentRows) {
 
 // Fetch Google Sheets Data
 async function fetchGoogleSheetData() {
+  if (!IS_LIVE_GITHUB_DASHBOARD) {
+    googleSheetRemarksMap = {};
+    return;
+  }
   try {
     const url = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
     const response = await fetch(url);
@@ -1433,7 +1440,14 @@ async function loadAllExcelData(){
   let historyData = [];
 
   await fetchSavedDbRemarks();
-  await fetchGoogleSheetData();
+
+  // ChatGPT/Sites Preview may repeatedly ask for external network permission.
+  // Do not call the live Google Sheet from an embedded preview; the real GitHub
+  // Pages dashboard remains top-level and will continue to load live remarks.
+  const isEmbeddedPreview = window.self !== window.top;
+  if (!isEmbeddedPreview) {
+    if (IS_LIVE_GITHUB_DASHBOARD) await fetchGoogleSheetData();
+  }
 
   try {
     currentMonthData = await fetchAndParseWithCache("data.xlsx") || [];
@@ -1577,7 +1591,7 @@ setInterval(checkForNewData, 30 * 60 * 1000); // check every 30 minutes
 
 // Live Google Sheet Refresh Interval (Every 30 Seconds)
 setInterval(() => {
-  fetchGoogleSheetData();
+  if (IS_LIVE_GITHUB_DASHBOARD) fetchGoogleSheetData();
 }, 30000);
 </script>
 </body>
