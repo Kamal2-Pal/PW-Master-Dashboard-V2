@@ -273,7 +273,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <section class="card"><div class="section-title">Daily SLA %</div><div id="slaDayChart" class="chart"></div></section>
     <section class="card"><div class="section-title">SLA Rules</div><div class="note"><p>🟢 <b>Within SLA</b> — Actual Ship in ≤ 48 hours</p><p>🔴 <b>Breached</b> — Actual Ship after 48 hours or open beyond 48 hours</p><p>🟠 <b>At Risk</b> — open and due within next 6 hours</p><p>⚪ <b>Open &lt;48H</b> — still open within target</p></div></section>
   </div>
-  <section class="table-card"><div class="section-title">WH Remarks — Breached Orders (Col C Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
+  
   <section class="table-card" style="margin-bottom:16px">
     <div class="section-title">Total Open Orders — Order-wise Remarks</div>
     <div class="note">Orders not yet shipped/cancelled — Open &lt;48H, At Risk and Open &gt;48H combined.</div>
@@ -995,14 +995,6 @@ function renderSla(rows){
     }
   });
   miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?(x.ok/x.total*100):0]));
-
-  // WH Remarks Summary — Breached Orders (Mapped from Column C)
-  const br=rows.filter(r=>r._sla==="Breached"),remarks={};
-  br.forEach(r=>{
-    const x=getEffectiveRemark(r, "breach")||"Blank / No Remarks";
-    remarks[x]=(remarks[x]||0)+1;
-  });
-  $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
   // Total Open Orders — Order-wise Remarks. Same table format as the
   // Open >48H table below, but covers all still-open orders (Open <48H,
