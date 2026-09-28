@@ -892,69 +892,414 @@ def _search_download_in_frames(driver):
     return None
 
 
+def _switch_to_pending_report_picker(driver, open_screen=False):
+    """Locate Vinculum Pending Report grid for PickPackReport downloads."""
+    driver.switch_to.default_content()
+
+    if open_screen:
+        try:
+            driver.execute_script(
+                "if (typeof openScreen === 'function') { "
+                "openScreen('Pending Report','pendingDisplay','fa fa-fw fa-truck'); "
+                "return true; } return false;"
+            )
+            time.sleep(2)
+        except Exception as exc:
+            print(f"   Pending Report open warning: {exc}")
+
+    def content_present():
+        try:
+            body = driver.find_element(By.TAG_NAME, "body").text.lower()
+            rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+            return (
+                bool(rows)
+                and (
+                    "pending report" in body
+                    or "report id" in body
+                    or "report names" in body
+                )
+            )
+        except Exception:
+            return False
+
+    deadline = time.time() + 20
+
+    while time.time() < deadline:
+        # Top-level
+        driver.switch_to.default_content()
+        if content_present():
+            return True
+
+        # One/two iframe levels, same proven pattern used by Returns.
+        try:
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
+        except Exception:
+            frames = []
+
+        for fr in frames:
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(fr)
+
+                if content_present():
+                    return True
+
+                nested = driver.find_elements(By.TAG_NAME, "iframe")
+                for nfr in nested:
+                    try:
+                        driver.switch_to.frame(nfr)
+                        if content_present():
+                            return True
+                        driver.switch_to.parent_frame()
+                    except Exception:
+                        try:
+                            driver.switch_to.parent_frame()
+                        except Exception:
+                            pass
+
+            except Exception:
+                pass
+
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
+
+        time.sleep(0.5)
+
+    driver.switch_to.default_content()
+    return False
+
+
+def _get_picker_pending_rows(driver):
+    """Read PickPackReport rows from the currently selected Pending Report frame."""
+    rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+    result = []
+
+    for row in rows:
+        try:
+            cells = row.find_elements(By.TAG_NAME, "td")
+            texts = [norm(c.text) for c in cells]
+            joined = " ".join(texts).upper().replace(" ", "")
+
+            if "PICKPACKREPORT" not in joined:
+                continue
+
+            status = next(
+                (
+                    t.upper()
+                    for t in texts
+                    if t.upper() in {
+                        "SUCCESS", "ERROR", "WIP", "PENDING",
+                        "FAILED", "PROCESSING"
+                    }
+                ),
+                "",
+            )
+
+            report_id = next(
+                (t for t in texts if t.isdigit() and len(t) >= 4),
+                None,
+            )
+
+            result.append({
+                "row": row,
+                "texts": texts,
+                "report_id": report_id,
+                "status": status,
+            })
+        except Exception:
+            continue
+
+    return result
+
+
+def _refresh_picker_pending_report(driver):
+    """Refresh the actual Pending Report grid without reloading the app."""
+    if not _switch_to_pending_report_picker(driver):
+        return False
+
+    try:
+        refreshed = driver.execute_script(
+            "if (typeof refreshGrid === 'function') "
+            "{ refreshGrid(); return true; } return false;"
+        )
+
+        if refreshed:
+            print("   Pending Report refreshGrid() hua.")
+            return True
+
+        # Inspect-confirmed fallback.
+        refresh_links = driver.find_elements(
+            By.CSS_SELECTOR,
+            "#refreshBtn a[onclick*='refreshGrid']"
+        )
+        if refresh_links:
+            driver.execute_script(
+                "arguments[0].click();", refresh_links[0]
+            )
+            print("   Pending Report refresh link click hua.")
+            return True
+
+        return False
+    finally:
+        driver.switch_to.default_content()
+
+
+def _download_picker_success_row(driver, target_report_id):
+    """Click the exact PickPackReport SUCCESS row downloadReport control."""
+    if not _switch_to_pending_report_picker(driver):
+        raise RuntimeError(
+            "SUCCESS ke baad Pending Report screen/grid nahi mila."
+        )
+
+    rows = _get_picker_pending_rows(driver)
+
+    target = next(
+        (
+            r for r in rows
+            if r["report_id"] == str(target_report_id)
+            and r["status"] == "SUCCESS"
+        ),
+        None,
+    )
+
+    if target is None:
+        driver.switch_to.default_content()
+        raise RuntimeError(
+            f"SUCCESS PickPackReport Report ID {target_report_id} "
+            "ka exact row download ke liye nahi mila."
+        )
+
+    row = target["row"]
+    print(
+        f"   Exact SUCCESS PickPackReport row confirmed - "
+        f"Report ID: {target_report_id}"
+    )
+
+    # This is the proven Vinculum control from the working Returns extractor.
+    download_controls = row.find_elements(
+        By.CSS_SELECTOR,
+        "label[onclick*='downloadReport']"
+    )
+
+    if not download_controls:
+        download_controls = row.find_elements(
+            By.XPATH,
+            ".//label[contains(translate(@onclick,"
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+            "'downloadreport')]"
+        )
+
+    if not download_controls:
+        driver.switch_to.default_content()
+        raise RuntimeError(
+            f"SUCCESS PickPackReport Report ID {target_report_id} "
+            "mein exact downloadReport control nahi mila."
+        )
+
+    download_control = download_controls[0]
+    driver.execute_script(
+        "arguments[0].scrollIntoView({block:'center'});",
+        download_control
+    )
+    time.sleep(0.5)
+
+    try:
+        driver.execute_script(
+            "arguments[0].click();", download_control
+        )
+    except Exception:
+        download_control.click()
+
+    print(
+        f"   Download button click ho gaya - "
+        f"Report ID: {target_report_id}"
+    )
+
+
 def click_print_and_wait_for_download(driver):
+    """
+    Print creates a PickPackReport request in Vinculum Pending Report.
+
+    IMPORTANT:
+    Do not wait for a filesystem download immediately after Print.
+    Vinculum first creates the report, shows it as WIP/PENDING, then SUCCESS,
+    and only the SUCCESS row exposes the downloadReport control.
+    """
     print_btn = find_print_button(driver)
     if not print_btn:
         save_diagnostic(driver, "Print button not found")
         raise RuntimeError("Print button nahi mila.")
 
     before = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
+
     click_js(driver, print_btn)
-    print("Print click ho gaya. Vinculum report generate hone ka wait...")
+    request_started_at = time.time()
 
-    # The previous version waited 180 seconds only for a filesystem download.
-    # That was the problem: Vinculum does NOT necessarily download directly.
-    # It first generates the report and then shows a Download control.
-    # Poll both the filesystem AND the page for the full wait window.
-    deadline = time.time() + REPORT_WAIT_TIMEOUT
-    last_log = 0
+    print(
+        "Print click ho gaya. Ab Vinculum Pending Report me "
+        "PickPackReport SUCCESS ka wait..."
+    )
 
-    while time.time() < deadline:
-        elapsed = int(REPORT_WAIT_TIMEOUT - (deadline - time.time()))
-        if elapsed - last_log >= 10:
-            print(f"   Report generation/download polling... {elapsed}s")
-            last_log = elapsed
+    current_report_id = None
+    status_ready = False
 
-        # A direct browser download may already have started.
-        downloaded = wait_for_new_download(before, timeout=1)
+    # Vinculum report generation can take several minutes.
+    # Use the same proven 10-second polling approach as Returns.
+    max_wait_seconds = 600
+    poll_seconds = 10
+    started = time.time()
+    attempt = 0
+
+    while time.time() - started < max_wait_seconds:
+        attempt += 1
+
+        # A direct browser download is still accepted if Vinculum happens
+        # to download immediately.
+        downloaded = wait_for_new_download(
+            before,
+            timeout=1
+        )
         if downloaded:
-            print("Picker report direct download complete:", os.path.basename(downloaded))
+            print(
+                "Picker report direct download complete:",
+                os.path.basename(downloaded)
+            )
             return downloaded
 
-        # Check all open windows/tabs. Some Vinculum builds render the
-        # generated report in a new tab/window.
-        original_handle = driver.current_window_handle
-        for handle in list(driver.window_handles):
-            try:
-                driver.switch_to.window(handle)
-                driver.switch_to.default_content()
-
-                # Search current page and nested report iframes.
-                found = _search_download_in_frames(driver)
-                if found:
-                    print("Generated Picker report Download control mil gaya.")
-                    before_click = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
-                    click_js(driver, found)
-                    downloaded = wait_for_new_download(before_click, timeout=60)
-                    if downloaded:
-                        print("Download button click se report mil gaya:",
-                              os.path.basename(downloaded))
-                        return downloaded
-            except Exception:
-                pass
-            finally:
-                try:
-                    driver.switch_to.window(original_handle)
-                    driver.switch_to.default_content()
-                except Exception:
-                    pass
+        try:
+            _refresh_picker_pending_report(driver)
+        except Exception as exc:
+            print(
+                f"   Pending Report refresh issue: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
         time.sleep(1)
 
-    save_diagnostic(driver, "Picker report download timeout after DOM + filesystem polling")
-    raise RuntimeError(
-        f"Print ke baad {REPORT_WAIT_TIMEOUT} sec mein Picker report download nahi hui."
+        try:
+            if not _switch_to_pending_report_picker(driver):
+                print(
+                    f"   Attempt {attempt}: Pending Report frame "
+                    "abhi available nahi hai."
+                )
+                time.sleep(poll_seconds)
+                continue
+
+            rows = _get_picker_pending_rows()
+
+            # Prefer the newest PickPackReport request. Vinculum lists
+            # newest reports first in the Pending Report grid.
+            candidate = rows[0] if rows else None
+
+            # If we already have an ID, keep tracking that exact report.
+            if current_report_id:
+                exact = next(
+                    (
+                        r for r in rows
+                        if r["report_id"] == str(current_report_id)
+                    ),
+                    None,
+                )
+                if exact:
+                    candidate = exact
+
+            driver.switch_to.default_content()
+
+            if candidate is None:
+                print(
+                    f"   Attempt {attempt}: PickPackReport row abhi nahi mila."
+                )
+                time.sleep(poll_seconds)
+                continue
+
+            current_report_id = candidate["report_id"]
+            status_text = candidate["status"]
+
+            print(
+                f"   Attempt {attempt}: Report "
+                f"{current_report_id} - Status: "
+                f"{status_text or 'UNKNOWN'}"
+            )
+
+            if status_text in {"ERROR", "FAILED"}:
+                raise RuntimeError(
+                    f"PickPackReport Report ID {current_report_id} "
+                    f"ERROR/FAILED hua. Row: "
+                    f"{' | '.join(candidate['texts'])}"
+                )
+
+            if status_text == "SUCCESS":
+                status_ready = True
+                print(
+                    f"   SUCCESS mila - Report ID: {current_report_id}"
+                )
+                break
+
+            print(
+                "   Status SUCCESS nahi hua, isliye download button "
+                "abhi nahi dabega."
+            )
+
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            print(
+                f"   Status read issue: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
+
+        time.sleep(poll_seconds)
+
+    if not status_ready or not current_report_id:
+        raise RuntimeError(
+            f"PickPackReport {current_report_id or 'new report'} "
+            f"{max_wait_seconds} seconds mein SUCCESS nahi hua."
+        )
+
+    print(
+        "SUCCESS confirm ho gaya. Ab isi PickPackReport ka "
+        "exact downloadReport click kar raha hoon..."
     )
+
+    # Take the snapshot immediately BEFORE the exact download click.
+    files_before_download = set(
+        glob.glob(os.path.join(DOWNLOAD_FOLDER, "*"))
+    )
+
+    _download_picker_success_row(driver, current_report_id)
+
+    driver.switch_to.default_content()
+
+    print("Excel download hone ka wait...")
+
+    downloaded_file = wait_for_download(
+        DOWNLOAD_FOLDER,
+        timeout=120,
+        existing_files=files_before_download,
+    )
+
+    if not downloaded_file:
+        current_files = sorted(
+            glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        print(
+            "   Download folder files:",
+            [os.path.basename(f) for f in current_files[:10]]
+        )
+        raise RuntimeError("Excel download timeout ho gaya.")
+
+    print(
+        f"Download complete: {os.path.basename(downloaded_file)}"
+    )
+    return downloaded_file
 
 
 # ============================================================
