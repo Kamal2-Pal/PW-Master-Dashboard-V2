@@ -117,6 +117,14 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
+
+.picker-search-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;flex-wrap:wrap}
+.picker-search-box{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #ccd5df;border-radius:8px;padding:0 10px;height:38px;min-width:360px;flex:1}
+.picker-search-box input{border:0;outline:0;width:100%;min-width:0;padding:8px 4px}
+#pickerTab .zoho-filter{flex-wrap:wrap}
+#pickerTab .zoho-filter .field{min-width:140px}
+#pickerTab .zoho-filter select{min-width:140px}
+@media(max-width:800px){.picker-search-box{min-width:100%}}
 </style>
 </head>
 <body>
@@ -165,6 +173,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <button class="tab" data-tab="slaTab">48H Ship SLA</button>
   <button class="tab" data-tab="b2bTab">B2B_Reports</button>
   <button class="tab" data-tab="returnsTab">Returns</button>
+  <button class="tab" data-tab="pickerTab">Picker Report</button>
 </div>
 
 <main class="wrap">
@@ -355,6 +364,59 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
       </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Month</th><th>Shipped Qty</th><th>Return Qty</th><th>Return Qty %</th></tr></thead><tbody id="returnsTbody"></tbody></table></div>
+  </section>
+</section>
+
+<section id="pickerTab" class="tab-panel">
+  <div class="sla-head">
+    <div>
+      <h2>Picker Report</h2>
+      <div class="note" id="pickerSourceNote">Today = live picker_live.csv • History = picker_history.csv (yesterday + older archived data).</div>
+    </div>
+    <div class="sla-target">
+      <div class="muted">Last Picker Sync</div>
+      <strong id="pickerLastSync">—</strong>
+    </div>
+  </div>
+
+  <div class="kpis" id="pickerKpis"></div>
+
+  <section class="zoho-section">
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">Picker Data</div>
+        <div class="note" id="pickerCoverageNote">Picker data is loaded only when this tab is opened, so the existing B2B dashboard stays fast.</div>
+      </div>
+      <div class="zoho-filter">
+        <div class="field">Data Scope
+          <select id="pickerScopeFilter">
+            <option value="live">Today Live</option>
+            <option value="history">History</option>
+            <option value="all">All Picker Data</option>
+          </select>
+        </div>
+        <div class="field">Date
+          <select id="pickerDateFilter"><option value="">All Dates</option></select>
+        </div>
+        <div class="field">Pick User
+          <select id="pickerUserFilter"><option value="">All Pickers</option></select>
+        </div>
+        <div class="field">Order Type
+          <select id="pickerOrderTypeFilter"><option value="">All Types</option></select>
+        </div>
+        <button type="button" onclick="clearPickerFilters()">Clear</button>
+        <button type="button" onclick="loadPickerData(true)">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="picker-search-row">
+      <div class="picker-search-box">
+        🔎 <input id="pickerSearch" placeholder="Search Order No / SKU / Picker / Customer…" aria-label="Search Picker Report">
+      </div>
+      <div class="note" id="pickerResultNote">Open Picker Report tab to load data.</div>
+    </div>
+
+    <div class="table-wrap"><table><thead id="pickerThead"></thead><tbody id="pickerTbody"></tbody></table></div>
   </section>
 </section>
 </main>
@@ -956,7 +1018,9 @@ const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivere
 // back to an already-fresh tab is instant instead of recomputing again.
 let slaBaseRows=[];
 let slaDirty=true, zohoDirty=true, b2bDirty=true, returnsDirty=true;
-function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; b2bDirty=true; returnsDirty=true; }
+// Picker data is loaded lazily and kept separate from the existing dashboard datasets.
+
+function markSecondaryTabsDirty(){ slaDirty=true; zohoDirty=true; b2bDirty=true; returnsDirty=true; pickerDirty=true; }
 function refreshActiveTabIfNeeded(){
   if($("slaTab").classList.contains("active-panel")){
     if(slaDirty){ initSlaFilters(); applySlaFilters(); slaDirty=false; }
@@ -966,6 +1030,8 @@ function refreshActiveTabIfNeeded(){
     if(b2bDirty){ renderB2BReports(); b2bDirty=false; }
   } else if($("returnsTab").classList.contains("active-panel")){
     if(returnsDirty){ renderReturnsTab(); returnsDirty=false; }
+  } else if($("pickerTab").classList.contains("active-panel")){
+    refreshPickerIfNeeded();
   }
 }
 
@@ -1417,12 +1483,197 @@ function renderZohoDocs(){
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();refreshActiveTabIfNeeded();}
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();slaDirty=false;}
 
+// ============================================================
+// PICKER REPORT TAB
+// ============================================================
+// Picker is intentionally loaded lazily so adding this report does NOT slow
+// the existing Order / Zoho / SLA / B2B / Returns tabs during initial load.
+let pickerRows = [];
+let pickerLoaded = false;
+let pickerLoading = false;
+let pickerDirty = true;
+
+const PICKER_LIVE_FILE = "data/picker_live.csv";
+const PICKER_HISTORY_FILE = "data/picker_history.csv";
+const PICKER_VISIBLE_ROW_LIMIT = 3000;
+
+function pickerNorm(v){ return String(v ?? "").trim(); }
+function pickerNum(v){
+  const n=parseFloat(String(v ?? "").replace(/,/g,""));
+  return Number.isFinite(n)?n:0;
+}
+function pickerDateKey(v){
+  const s=pickerNorm(v);
+  if(!s)return "";
+  let m=s.match(/^(\d{4})[-\/]([0-1]?\d)[-\/]([0-3]?\d)/);
+  if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  m=s.match(/^(\d{1,2})[-\/]([0-1]?\d)[-\/](\d{4})/);
+  if(m)return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  const d=new Date(s);
+  if(Number.isNaN(d.getTime()))return "";
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function pickerTodayKey(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function pickerOrder(r){ return pickerNorm(r["Order No"]); }
+function pickerUser(r){ return pickerNorm(r["Pick User"]); }
+function pickerType(r){ return pickerNorm(r["Order Type"]); }
+function pickerSku(r){ return pickerNorm(r["SKU Code"]); }
+function pickerCustomer(r){ return pickerNorm(r["Customer Name"]); }
+
+async function fetchPickerCsv(path, cacheBust=false){
+  const url=cacheBust ? `${path}?ts=${Date.now()}` : path;
+  try{
+    const res=await fetch(url,{cache:cacheBust?"no-store":"default"});
+    if(!res.ok) return [];
+    const csv=await res.text();
+    return await new Promise((resolve,reject)=>{
+      Papa.parse(csv,{header:true,skipEmptyLines:true,complete:r=>resolve(Array.isArray(r.data)?r.data:[]),error:reject});
+    });
+  }catch(err){
+    console.warn(`Picker CSV fetch failed: ${path}`,err);
+    return [];
+  }
+}
+
+async function loadPickerData(force=false){
+  if(pickerLoading)return;
+  if(pickerLoaded && !force && !pickerDirty){
+    renderPickerTab();
+    return;
+  }
+  pickerLoading=true;
+  $("pickerResultNote").textContent="Loading Picker live + history data…";
+  try{
+    const [liveRows,historyRows,meta] = await Promise.all([
+      fetchPickerCsv(PICKER_LIVE_FILE,true),
+      fetchPickerCsv(PICKER_HISTORY_FILE,true),
+      fetch(`data/picker-meta.json?ts=${Date.now()}`,{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null)
+    ]);
+
+    const live=liveRows.map(r=>({...r,_pickerSource:"Today Live"}));
+    const history=historyRows.map(r=>({...r,_pickerSource:"History"}));
+    pickerRows=history.concat(live);
+    pickerLoaded=true;
+    pickerDirty=false;
+
+    if(meta && meta.generatedAt){
+      const d=new Date(meta.generatedAt);
+      $("pickerLastSync").textContent=Number.isNaN(d.getTime())?pickerNorm(meta.generatedAt):d.toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true});
+    }else{
+      $("pickerLastSync").textContent="—";
+    }
+
+    $("pickerSourceNote").textContent=`Today Live: ${live.length.toLocaleString()} lines • History: ${history.length.toLocaleString()} lines • Daily automation archives yesterday and keeps today live.`;
+    buildPickerFilters();
+    renderPickerTab();
+  }catch(err){
+    console.error("Picker data load failed",err);
+    $("pickerResultNote").textContent="Picker data load failed. Check GitHub data files.";
+    $("pickerTbody").innerHTML=`<tr><td colspan="12" class="muted">Picker data could not be loaded.</td></tr>`;
+  }finally{
+    pickerLoading=false;
+  }
+}
+
+function buildPickerFilters(){
+  const scope=$("pickerScopeFilter").value||"live";
+  const sourceRows=scope==="live"?pickerRows.filter(r=>r._pickerSource==="Today Live") : scope==="history"?pickerRows.filter(r=>r._pickerSource==="History") : pickerRows;
+  const dateSet=new Set(),userSet=new Set(),typeSet=new Set();
+  sourceRows.forEach(r=>{
+    const d=pickerDateKey(r["Pick Date"]||r["Order Date"]||r["Allocation Date"]);
+    if(d)dateSet.add(d);
+    if(pickerUser(r))userSet.add(pickerUser(r));
+    if(pickerType(r))typeSet.add(pickerType(r));
+  });
+  const dateSel=$("pickerDateFilter"),userSel=$("pickerUserFilter"),typeSel=$("pickerOrderTypeFilter");
+  const oldDate=dateSel.value,oldUser=userSel.value,oldType=typeSel.value;
+  dateSel.innerHTML=`<option value="">All Dates</option>`+Array.from(dateSet).sort().reverse().map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
+  userSel.innerHTML=`<option value="">All Pickers</option>`+Array.from(userSet).sort((a,b)=>a.localeCompare(b)).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  typeSel.innerHTML=`<option value="">All Types</option>`+Array.from(typeSet).sort((a,b)=>a.localeCompare(b)).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if(Array.from(dateSet).includes(oldDate))dateSel.value=oldDate;
+  if(Array.from(userSet).includes(oldUser))userSel.value=oldUser;
+  if(Array.from(typeSet).includes(oldType))typeSel.value=oldType;
+
+  // Default Today Live view to today's date when the file contains today's data.
+  if(scope==="live" && !dateSel.value){
+    const today=pickerTodayKey();
+    if(dateSet.has(today))dateSel.value=today;
+  }
+}
+
+function getFilteredPickerRows(){
+  const scope=$("pickerScopeFilter").value||"live";
+  const date=$("pickerDateFilter").value;
+  const user=$("pickerUserFilter").value;
+  const type=$("pickerOrderTypeFilter").value;
+  const q=pickerNorm($("pickerSearch").value).toLowerCase();
+  return pickerRows.filter(r=>{
+    if(scope==="live" && r._pickerSource!=="Today Live")return false;
+    if(scope==="history" && r._pickerSource!=="History")return false;
+    const d=pickerDateKey(r["Pick Date"]||r["Order Date"]||r["Allocation Date"]);
+    if(date && d!==date)return false;
+    if(user && pickerUser(r)!==user)return false;
+    if(type && pickerType(r)!==type)return false;
+    if(q){
+      const hay=[pickerOrder(r),pickerSku(r),pickerUser(r),pickerCustomer(r),pickerType(r),pickerNorm(r["Picklist No."]),pickerNorm(r["Bin"])].join(" ").toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+}
+
+function renderPickerTab(){
+  if(!pickerLoaded)return;
+  const rows=getFilteredPickerRows();
+  const uniqueOrders=new Set(rows.map(pickerOrder).filter(Boolean)).size;
+  const totalQty=rows.reduce((s,r)=>s+pickerNum(r["Qty"]),0);
+  const pickers=new Set(rows.map(pickerUser).filter(Boolean)).size;
+  const skus=new Set(rows.map(pickerSku).filter(Boolean)).size;
+  const liveCount=rows.filter(r=>r._pickerSource==="Today Live").length;
+  const historyCount=rows.filter(r=>r._pickerSource==="History").length;
+  $("pickerKpis").innerHTML=[
+    ["Unique Orders",uniqueOrders.toLocaleString()],
+    ["Pick Qty",totalQty.toLocaleString()],
+    ["Pickers",pickers.toLocaleString()],
+    ["Unique SKUs",skus.toLocaleString()],
+    ["Live Lines",liveCount.toLocaleString()],
+    ["History Lines",historyCount.toLocaleString()]
+  ].map(x=>kpi(...x)).join("");
+
+  const cols=["Order No","Order Date","Allocation Date","SKU Code","SKU Description","Pick Date","Pick User","Bin","Qty","Customer Name","Picklist No.","Source WH"];
+  $("pickerThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
+  const visible=rows.slice(0,PICKER_VISIBLE_ROW_LIMIT);
+  $("pickerTbody").innerHTML=visible.map(r=>"<tr>"+cols.map(c=>`<td>${esc(r[c])}</td>`).join("")+"</tr>").join("") || `<tr><td colspan="12" class="muted">No Picker records found for the selected filters.</td></tr>`;
+  $("pickerResultNote").textContent=`Showing ${visible.length.toLocaleString()} of ${rows.length.toLocaleString()} matching line items • ${uniqueOrders.toLocaleString()} unique orders`+(rows.length>PICKER_VISIBLE_ROW_LIMIT?` • table capped at ${PICKER_VISIBLE_ROW_LIMIT.toLocaleString()} rows for speed`:"");
+  $("pickerCoverageNote").textContent=`Data loaded from ${PICKER_LIVE_FILE} + ${PICKER_HISTORY_FILE}. Search/filter runs on the already-loaded CSV data; no Vinculum request is made from the dashboard.`;
+}
+
+function clearPickerFilters(){
+  $("pickerScopeFilter").value="live";
+  $("pickerDateFilter").value="";
+  $("pickerUserFilter").value="";
+  $("pickerOrderTypeFilter").value="";
+  $("pickerSearch").value="";
+  buildPickerFilters();
+  renderPickerTab();
+}
+
+function refreshPickerIfNeeded(){
+  if($("pickerTab").classList.contains("active-panel")){
+    if(!pickerLoaded || pickerDirty) loadPickerData();
+    else renderPickerTab();
+  }
+}
+
 document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
   btn.classList.add("active");
   $(btn.dataset.tab).classList.add("active-panel");
-  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"||btn.dataset.tab==="b2bTab"||btn.dataset.tab==="returnsTab"){refreshActiveTabIfNeeded()}
+  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"||btn.dataset.tab==="b2bTab"||btn.dataset.tab==="returnsTab"||btn.dataset.tab==="pickerTab"){refreshActiveTabIfNeeded()}
 }));
 
 ["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
@@ -1434,6 +1685,11 @@ $("zohoMonthFilter").addEventListener("change",renderZohoDocs);
 $("returnsDateFilter").addEventListener("change",()=>{ returnsDateHistoryExpanded=false; renderReturnsTab(); });
 $("returnsDateSectionMonthFilter").addEventListener("change",()=>{ returnsDateHistoryExpanded=false; $("returnsDateFilter").value=""; renderReturnsTab(); });
 $("returnsMonthFilter").addEventListener("change",renderReturnsTab);
+$("pickerScopeFilter").addEventListener("change",()=>{buildPickerFilters();renderPickerTab();});
+$("pickerDateFilter").addEventListener("change",renderPickerTab);
+$("pickerUserFilter").addEventListener("change",renderPickerTab);
+$("pickerOrderTypeFilter").addEventListener("change",renderPickerTab);
+$("pickerSearch").addEventListener("input",renderPickerTab);
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
 
 // Bulk Remarks CSV/Excel Upload Option
@@ -1649,6 +1905,14 @@ setInterval(checkForNewData, 30 * 60 * 1000); // check every 30 minutes
 setInterval(() => {
   if (IS_LIVE_GITHUB_DASHBOARD) fetchGoogleSheetData();
 }, 30000);
+
+// Picker automation runs twice daily. If the Picker tab is left open, refresh
+// its small CSV dataset periodically without affecting the existing dashboard.
+setInterval(() => {
+  if (IS_LIVE_GITHUB_DASHBOARD && $("pickerTab")?.classList.contains("active-panel")) {
+    loadPickerData(true);
+  }
+}, 10 * 60 * 1000);
 </script>
 </body>
 </html>
