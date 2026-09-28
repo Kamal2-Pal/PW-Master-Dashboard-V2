@@ -1622,7 +1622,11 @@ function buildPickerFilters(){
   const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const groups=["SPR","MTR","GP B2B"].filter(g=>rows.some(r=>pickerBinGroup(r)===g));
   const whs=[...new Set(rows.map(pickerWarehouse).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const orderTypes=[...new Set(rows.map(r=>pickerNorm(r["Order Type"]||r["OrderType"])).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  // Picker Report Order Type is a fixed field in the Vinculum Picker Report.
+  // Keep the filter aligned with the actual report values instead of
+  // picking values from another/previous dataset.
+  const pickerOrderTypes=["FOC","Franchise Contract","Normal","STO","Third Party"];
+  const orderTypes=pickerOrderTypes.filter(v=>rows.some(r=>pickerNorm(r["Order Type"]||r["OrderType"])===v));
   const us=$("pickerUserFilter"),gs=$("pickerBinGroupFilter"),ws=$("pickerWarehouseFilter"),ots=$("pickerOrderTypeFilter");
   const ou=us.value,og=gs.value,ow=ws.value,oot=ots.value;
   us.innerHTML='<option value="">All Pick Users</option>'+users.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
