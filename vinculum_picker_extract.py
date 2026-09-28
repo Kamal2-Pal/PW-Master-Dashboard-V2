@@ -76,12 +76,10 @@ EXPECTED_COLUMNS = [
     "Pick User",
     "Bin",
     "Qty",
-    "Pack Size ",
     "Brand Code",
     "Primary Supplier",
     "Supplier SKU",
     "LPN",
-    "Pack User",
     "Customer Name",
     "Picklist No.",
     "Source WH",
@@ -1322,9 +1320,12 @@ def read_report(path):
         rows = list(reader)
         fieldnames = reader.fieldnames or []
 
-    # Vinculum may return headers with trailing/leading spaces or
-    # minor whitespace differences (e.g. "Pack Size " vs "Pack Size").
-    # Normalize BOTH the actual CSV headers and the expected headers.
+    # Vinculum may return additional headers, including Pack-related
+    # columns. Extra headers are intentionally ignored. Only the required
+    # Picker columns below are mapped into the dashboard data.
+    #
+    # Header matching is whitespace-normalized so minor header formatting
+    # differences do not break extraction.
     normalized = {}
     for actual_name in fieldnames:
         key = norm(actual_name).lower()
