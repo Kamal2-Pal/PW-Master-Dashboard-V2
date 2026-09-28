@@ -1547,12 +1547,20 @@ let pickerRows=[],pickerLoaded=false,pickerLoading=false,pickerDirty=true;
 const PICKER_LIVE_FILE="data/picker_live.csv";
 const PICKER_HISTORY_FILE="data/picker_history.csv";
 
-function pickerNorm(v){return String(v??"").trim();}
+function pickerNorm(v){return String(v??"").replace(/^\ufeff/,"").trim();}
 function pickerNum(v){const n=parseFloat(String(v??"").replace(/,/g,""));return Number.isFinite(n)?n:0;}
-function pickerOrder(r){return pickerNorm(r["Order No"]);}
-function pickerUser(r){return pickerNorm(r["Pick User"]);}
-function pickerWarehouse(r){return pickerNorm(r["Source WH"]);}
-function pickerPicklist(r){return pickerNorm(r["Picklist No."]);}
+function pickerField(r, names){
+  for(const name of names){
+    if(Object.prototype.hasOwnProperty.call(r,name)) return r[name];
+  }
+  const wanted=names.map(x=>String(x).replace(/^\ufeff/,"").trim().toLowerCase());
+  const key=Object.keys(r||{}).find(k=>wanted.includes(String(k).replace(/^\ufeff/,"").trim().toLowerCase()));
+  return key ? r[key] : "";
+}
+function pickerOrder(r){return pickerNorm(pickerField(r,["Order No","OrderNo"]));}
+function pickerUser(r){return pickerNorm(pickerField(r,["Pick User","PickUser"]));}
+function pickerWarehouse(r){return pickerNorm(pickerField(r,["Source WH","SourceWH"]));}
+function pickerPicklist(r){return pickerNorm(pickerField(r,["Picklist No.","Picklist No","PicklistNo"]));}
 
 function pickerDateKey(v){
   const s=pickerNorm(v);if(!s)return "";
@@ -1576,7 +1584,7 @@ function pickerDateKey(v){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 function pickerYesterdayKey(){const d=new Date();d.setDate(d.getDate()-1);return pickerDateKey(d);}
-function pickerBinGroup(r){const b=pickerNorm(r["Bin"]).toUpperCase();if(b.startsWith("SPR"))return "SPR";if(b.startsWith("MTR"))return "MTR";return "GP B2B";}
+function pickerBinGroup(r){const b=pickerNorm(pickerField(r,["Bin","BIN"])).toUpperCase();if(b.startsWith("SPR"))return "SPR";if(b.startsWith("MTR"))return "MTR";return "GP B2B";}
 
 async function fetchPickerCsv(path,cacheBust=false){
   const url=cacheBust?`${path}?ts=${Date.now()}`:path;
@@ -1625,8 +1633,9 @@ function buildPickerFilters(){
   // Picker Report Order Type is a fixed field in the Vinculum Picker Report.
   // Keep the filter aligned with the actual report values instead of
   // picking values from another/previous dataset.
-  const pickerOrderTypes=["FOC","Franchise Contract","Normal","STO","Third Party"];
-  const orderTypes=pickerOrderTypes.filter(v=>rows.some(r=>pickerNorm(r["Order Type"]||r["OrderType"])===v));
+  // These are the actual Vinculum Picker Report Order Type values.
+  // Always show them even when the current scope/date has zero rows.
+  const orderTypes=["FOC","Franchise Contract","Normal","STO","Third Party"];
   const us=$("pickerUserFilter"),gs=$("pickerBinGroupFilter"),ws=$("pickerWarehouseFilter"),ots=$("pickerOrderTypeFilter");
   const ou=us.value,og=gs.value,ow=ws.value,oot=ots.value;
   us.innerHTML='<option value="">All Pick Users</option>'+users.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
@@ -1644,15 +1653,15 @@ function getFilteredPickerRows(){
     if(user&&pickerUser(r)!==user)return false;
     if(group&&pickerBinGroup(r)!==group)return false;
     if(wh&&pickerWarehouse(r)!==wh)return false;
-    if(date&&pickerDateKey(r["Pick Date"])!==date)return false;
-    if(orderType&&pickerNorm(r["Order Type"]||r["OrderType"])!==orderType)return false;
+    if(date&&pickerDateKey(pickerField(r,["Pick Date","PickDate"]))!==date)return false;
+    if(orderType&&pickerNorm(pickerField(r,["Order Type","OrderType"]))!==orderType)return false;
     return true;
   });
 }
 
 function pickerGroupStats(rows,group){
   const x=rows.filter(r=>pickerBinGroup(r)===group);
-  return {rows:x.length,picklists:new Set(x.map(pickerPicklist).filter(Boolean)).size,orders:new Set(x.map(pickerOrder).filter(Boolean)).size,qty:x.reduce((s,r)=>s+pickerNum(r["Qty"]),0)};
+  return {rows:x.length,picklists:new Set(x.map(pickerPicklist).filter(Boolean)).size,orders:new Set(x.map(pickerOrder).filter(Boolean)).size,qty:x.reduce((s,r)=>s+pickerNum(pickerField(r,["Qty","Quantity"])),0)};
 }
 function pickerKpi(label,value){return `<div class="picker-kpi"><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`;}
 
@@ -1662,17 +1671,17 @@ function renderPickerKpis(rows){
     ["Pick Users",new Set(rows.map(pickerUser).filter(Boolean)).size],
     ["Picklist Count",new Set(rows.map(pickerPicklist).filter(Boolean)).size],
     ["Order Count",new Set(rows.map(pickerOrder).filter(Boolean)).size],
-    ["Order Qty",rows.reduce((a,r)=>a+pickerNum(r["Qty"]),0)],
+    ["Order Qty",rows.reduce((a,r)=>a+pickerNum(pickerField(r,["Qty","Quantity"])),0)],
     ["SPR Line Count",s.rows],["MTR Line Count",m.rows],["GP B2B Line Count",g.rows]
   ].map(x=>pickerKpi(x[0],Number(x[1]).toLocaleString())).join("");
 }
 function renderPickerYesterday(){
-  const d=pickerYesterdayKey(),rows=pickerRows.filter(r=>pickerDateKey(r["Pick Date"])===d);
+  const d=pickerYesterdayKey(),rows=pickerRows.filter(r=>pickerDateKey(pickerField(r,["Pick Date","PickDate"]))===d);
   $("pickerYesterdayNote").textContent=`Yesterday (${d}) based on Pick Date.`;
   $("pickerYesterdayCards").innerHTML=[
     ["Pick Users",new Set(rows.map(pickerUser).filter(Boolean)).size],
     ["Unique Orders",new Set(rows.map(pickerOrder).filter(Boolean)).size],
-    ["Order Qty",rows.reduce((a,r)=>a+pickerNum(r["Qty"]),0)],
+    ["Order Qty",rows.reduce((a,r)=>a+pickerNum(pickerField(r,["Qty","Quantity"])),0)],
     ["SPR Orders",pickerGroupStats(rows,"SPR").orders],
     ["MTR Orders",pickerGroupStats(rows,"MTR").orders],
     ["GP B2B Orders",pickerGroupStats(rows,"GP B2B").orders]
@@ -1700,7 +1709,7 @@ function renderPickerTab(){
   if(!pickerLoaded)return;
   const rows=getFilteredPickerRows();
   renderPickerKpis(rows);renderPickerYesterday();renderPickerPerformance(rows);renderPickerOrderSummary(rows);renderPickerBinSummary(rows);
-  const dates=[...new Set(pickerRows.map(r=>pickerDateKey(r["Pick Date"])).filter(Boolean))].sort();
+  const dates=[...new Set(pickerRows.map(r=>pickerDateKey(pickerField(r,["Pick Date","PickDate"]))).filter(Boolean))].sort();
   $("pickerCoverageNote").textContent=`Picker data coverage (Pick Date): ${dates[0]||"—"} → ${dates[dates.length-1]||"—"} • ${pickerRows.length.toLocaleString()} report rows`;
 }
 function clearPickerFilters(){
