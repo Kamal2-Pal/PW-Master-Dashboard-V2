@@ -1187,7 +1187,7 @@ def click_print_and_wait_for_download(driver):
                 time.sleep(poll_seconds)
                 continue
 
-            rows = _get_picker_pending_rows()
+            rows = _get_picker_pending_rows(driver)
 
             # Prefer the newest PickPackReport request. Vinculum lists
             # newest reports first in the Pending Report grid.
