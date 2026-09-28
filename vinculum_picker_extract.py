@@ -345,53 +345,192 @@ def login(driver, wait):
 # ============================================================
 
 def open_pick_pack_report(driver):
-    # First try the real report page if it is directly reachable.
-    driver.get(REPORT_URL)
-    time.sleep(2)
+    """
+    Open Pick Pack Report without navigating away from the logged-in
+    application page.
 
-    # Find the visible menu link/text "Pick Pack Report".
-    deadline = time.time() + 30
+    The previous version used driver.get(REPORT_URL) and then searched only
+    for visible text "Pick Pack Report". In headless Vinculum, the report menu
+    can be rendered as an icon/link whose visible text is not available.
+    We therefore inspect the actual DOM for the site's own menu action
+    (onclick/href/data attributes) containing Pick/Pack and click that element.
+    """
+    print("   Pick Pack Report menu locate kar raha hoon...")
+    driver.switch_to.default_content()
 
-    while time.time() < deadline:
-        candidates = driver.find_elements(
+    def report_screen_present():
+        """Return True when the Pick Pack Report screen has actually loaded."""
+        try:
+            body = driver.find_element(By.TAG_NAME, "body").text.lower()
+            markers = [
+                "picked report",
+                "packed report",
+                "pick user",
+                "picklist",
+            ]
+            if sum(1 for m in markers if m in body) >= 2:
+                return True
+        except Exception:
+            pass
+
+        # Common report controls; checked without assuming one exact ID.
+        try:
+            labels = driver.find_elements(By.TAG_NAME, "label")
+            label_text = " ".join(
+                visible_text(x).lower() for x in labels if x.is_displayed()
+            )
+            if "picked report" in label_text or "packed report" in label_text:
+                return True
+        except Exception:
+            pass
+
+        return False
+
+    def click_actual_pick_pack_menu():
+        """
+        Search the current document for the real Pick Pack menu element.
+        Priority:
+        1) visible text/title/aria-label
+        2) onclick containing openScreen + pick/pack
+        3) href/data attributes containing pick/pack
+        """
+        # 1) Visible/menu metadata.
+        elements = driver.find_elements(
             By.XPATH,
-            "//*[self::a or self::li or self::span or self::div or self::label]"
-            "[contains(translate(normalize-space(.),"
-            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
-            "'pick pack report')]",
+            "//*[self::a or self::li or self::span or self::div or self::label or self::button]"
         )
-
-        for el in candidates:
+        for el in elements:
             try:
-                if el.is_displayed() and el.is_enabled():
-                    click_js(driver, el)
-                    time.sleep(3)
+                if not el.is_displayed() or not el.is_enabled():
+                    continue
 
-                    body = driver.find_element(By.TAG_NAME, "body").text.lower()
-                    if "picked report" in body and "packed report" in body:
-                        print("Pick Pack Report open ho gaya.")
-                        return
+                meta = " ".join([
+                    visible_text(el),
+                    norm(el.get_attribute("title")),
+                    norm(el.get_attribute("aria-label")),
+                    norm(el.get_attribute("data-original-title")),
+                    norm(el.get_attribute("href")),
+                    norm(el.get_attribute("onclick")),
+                    norm(el.get_attribute("data-url")),
+                    norm(el.get_attribute("data-screen")),
+                ]).lower()
+
+                if "pick" in meta and "pack" in meta:
+                    click_js(driver, el)
+                    return True
             except Exception:
                 pass
 
-        # Some Vinculum menus use openScreen().
+        # 2) Directly inspect onclick attributes. This catches icon-only
+        # Vinculum menu entries where the visible text is absent.
         try:
-            driver.execute_script(
-                "if (typeof openScreen === 'function') { "
-                "openScreen('Pick Pack Report','pickPackReportBS','fa fa-arrow-circle-right'); "
-                "}"
+            onclick_elements = driver.find_elements(
+                By.XPATH,
+                "//*[@onclick]"
             )
-            time.sleep(3)
-            body = driver.find_element(By.TAG_NAME, "body").text.lower()
-            if "picked report" in body and "packed report" in body:
-                print("Pick Pack Report openScreen() se open ho gaya.")
+            for el in onclick_elements:
+                try:
+                    if not el.is_displayed() or not el.is_enabled():
+                        continue
+                    onclick = norm(el.get_attribute("onclick")).lower()
+                    if "pick" in onclick and "pack" in onclick:
+                        click_js(driver, el)
+                        return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return False
+
+    # Do NOT driver.get(REPORT_URL) here. Login already brought us into the
+    # authenticated application; navigating directly can discard the menu
+    # context/session state that contains the report action.
+    deadline = time.time() + 45
+
+    while time.time() < deadline:
+        handle_alerts(driver)
+        handle_common_dialogs(driver)
+
+        # Top-level document.
+        driver.switch_to.default_content()
+
+        if report_screen_present():
+            print("Pick Pack Report already open hai.")
+            return
+
+        if click_actual_pick_pack_menu():
+            print("Pick Pack Report menu click ho gaya.")
+            time.sleep(2)
+
+            if report_screen_present():
+                print("Pick Pack Report open ho gaya.")
                 return
+
+        # If the application menu is inside an iframe, search there too.
+        driver.switch_to.default_content()
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+
+        for fr in frames:
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(fr)
+
+                if report_screen_present():
+                    print("Pick Pack Report iframe ke andar open hai.")
+                    return
+
+                if click_actual_pick_pack_menu():
+                    print("Pick Pack Report iframe menu click ho gaya.")
+                    time.sleep(2)
+                    if report_screen_present():
+                        print("Pick Pack Report iframe se open ho gaya.")
+                        return
+            except Exception:
+                pass
+            finally:
+                try:
+                    driver.switch_to.default_content()
+                except Exception:
+                    pass
+
+        # Last fallback: use the site's real openScreen function only when
+        # its function exists AND the DOM exposes a Pick/Pack menu action.
+        # We extract the actual argument list from that menu instead of
+        # inventing a screen name.
+        try:
+            driver.switch_to.default_content()
+            menu_data = driver.execute_script("""
+                const els = Array.from(document.querySelectorAll('[onclick]'));
+                for (const e of els) {
+                    const o = (e.getAttribute('onclick') || '').toLowerCase();
+                    const meta = [
+                        e.innerText || '',
+                        e.getAttribute('title') || '',
+                        e.getAttribute('aria-label') || '',
+                        o
+                    ].join(' ').toLowerCase();
+                    if (meta.includes('pick') && meta.includes('pack') &&
+                        o.includes('openscreen')) {
+                        return e.getAttribute('onclick');
+                    }
+                }
+                return '';
+            """)
+
+            if menu_data:
+                print("Actual Pick Pack openScreen action mila.")
+                driver.execute_script(menu_data)
+                time.sleep(2)
+                if report_screen_present():
+                    print("Pick Pack Report actual openScreen() se open ho gaya.")
+                    return
         except Exception:
             pass
 
         time.sleep(1)
 
-    save_diagnostic(driver, "Pick Pack Report screen not found")
+    save_diagnostic(driver, "Pick Pack Report screen not found after DOM/menu inspection")
     raise RuntimeError("Pick Pack Report screen nahi mila.")
 
 
