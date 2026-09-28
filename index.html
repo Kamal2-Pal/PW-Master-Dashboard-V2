@@ -118,13 +118,34 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
 
-.picker-search-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;flex-wrap:wrap}
-.picker-search-box{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #ccd5df;border-radius:8px;padding:0 10px;height:38px;min-width:360px;flex:1}
-.picker-search-box input{border:0;outline:0;width:100%;min-width:0;padding:8px 4px}
-#pickerTab .zoho-filter{flex-wrap:wrap}
-#pickerTab .zoho-filter .field{min-width:140px}
-#pickerTab .zoho-filter select{min-width:140px}
-@media(max-width:800px){.picker-search-box{min-width:100%}}
+/* Picker Performance Dashboard */
+#pickerTab .picker-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}
+#pickerTab .picker-head h2{margin:0 0 5px}
+#pickerTab .picker-target{background:#eef6ff;border:1px solid #d5e8ff;border-radius:999px;padding:10px 15px;color:#1459a6;font-weight:800;white-space:nowrap}
+#pickerTab .picker-kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:16px}
+#pickerTab .picker-kpi{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:14px;box-shadow:0 2px 8px #0000000a}
+#pickerTab .picker-kpi small{color:#687686;text-transform:uppercase;font-size:10px;font-weight:800}
+#pickerTab .picker-kpi strong{display:block;font-size:25px;margin-top:7px}
+#pickerTab .picker-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;flex-wrap:wrap}
+#pickerTab .picker-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+#pickerTab .picker-filter-card{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:14px;margin-bottom:16px}
+#pickerTab .picker-filter-card .section-title{margin-bottom:10px}
+#pickerTab .picker-section{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px;margin-bottom:16px}
+#pickerTab .picker-section h3{margin:0 0 5px;font-size:17px}
+#pickerTab .picker-section .subnote{font-size:12px;color:#637181;margin-bottom:12px}
+#pickerTab .picker-table-wrap{overflow:auto;max-height:560px;border:1px solid #edf0f3;border-radius:8px}
+#pickerTab .picker-table-wrap.compact{max-height:430px}
+#pickerTab table.picker-table{border-collapse:collapse;width:100%;font-size:11px;min-width:1050px}
+#pickerTab table.picker-table th,#pickerTab table.picker-table td{padding:8px;border-bottom:1px solid #edf0f3;text-align:right;white-space:nowrap}
+#pickerTab table.picker-table th:first-child,#pickerTab table.picker-table td:first-child{text-align:left}
+#pickerTab table.picker-table th{background:#f7f9fb;position:sticky;top:0;z-index:1}
+#pickerTab table.picker-table thead tr.group-head th{text-align:center;font-weight:800}
+#pickerTab table.picker-table thead tr.group-head th:first-child{text-align:left}
+#pickerTab table.picker-table thead tr.sub-head th{text-align:right}
+#pickerTab .picker-footnote{background:#f7f9fb;border:1px solid #e5e9ee;border-radius:8px;padding:10px 12px;font-size:11px;color:#637181;margin-top:10px}
+@media(max-width:1250px){#pickerTab .picker-kpis{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:800px){#pickerTab .picker-kpis{grid-template-columns:repeat(2,1fr)}#pickerTab .picker-head{align-items:flex-start;flex-direction:column}}
+
 </style>
 </head>
 <body>
@@ -368,56 +389,75 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </section>
 
 <section id="pickerTab" class="tab-panel">
-  <div class="sla-head">
+  <div class="picker-head">
     <div>
-      <h2>Picker Report</h2>
-      <div class="note" id="pickerSourceNote">Today = live picker_live.csv • History = picker_history.csv (yesterday + older archived data).</div>
+      <h2>Picker Performance Dashboard</h2>
+      <div class="note">Pick User-wise unique Picklist, unique Order and Order Qty. Bin grouping: SPR, MTR, and all remaining bins as GP B2B.</div>
     </div>
-    <div class="sla-target">
-      <div class="muted">Last Picker Sync</div>
-      <strong id="pickerLastSync">—</strong>
-    </div>
+    <div class="picker-target">Bin logic: SPR / MTR / GP B2B</div>
   </div>
+  <div class="picker-meta">
+    <div class="note" id="pickerSourceNote">LIVE Picker Report • Loading…</div>
+    <button type="button" onclick="loadPickerData(true)">↻ Refresh Picker Data</button>
+  </div>
+  <div class="picker-kpis" id="pickerKpis"></div>
+  <div class="coverage" id="pickerCoverageNote">Picker data is loaded only when this tab is opened, so the existing dashboard remains fast.</div>
 
-  <div class="kpis" id="pickerKpis"></div>
-
-  <section class="zoho-section">
-    <div class="zoho-summary-head">
-      <div>
-        <div class="section-title">Picker Data</div>
-        <div class="note" id="pickerCoverageNote">Picker data is loaded only when this tab is opened, so the existing B2B dashboard stays fast.</div>
-      </div>
-      <div class="zoho-filter">
-        <div class="field">Data Scope
-          <select id="pickerScopeFilter">
-            <option value="live">Today Live</option>
-            <option value="history">History</option>
-            <option value="all">All Picker Data</option>
-          </select>
-        </div>
-        <div class="field">Date
-          <select id="pickerDateFilter"><option value="">All Dates</option></select>
-        </div>
-        <div class="field">Pick User
-          <select id="pickerUserFilter"><option value="">All Pickers</option></select>
-        </div>
-        <div class="field">Order Type
-          <select id="pickerOrderTypeFilter"><option value="">All Types</option></select>
-        </div>
-        <button type="button" onclick="clearPickerFilters()">Clear</button>
-        <button type="button" onclick="loadPickerData(true)">↻ Refresh</button>
-      </div>
-    </div>
-
-    <div class="picker-search-row">
-      <div class="picker-search-box">
-        🔎 <input id="pickerSearch" placeholder="Search Order No / SKU / Picker / Customer…" aria-label="Search Picker Report">
-      </div>
-      <div class="note" id="pickerResultNote">Open Picker Report tab to load data.</div>
-    </div>
-
-    <div class="table-wrap"><table><thead id="pickerThead"></thead><tbody id="pickerTbody"></tbody></table></div>
+  <section class="card" style="margin-bottom:16px">
+    <div class="section-title">Yesterday Summary</div>
+    <div class="note" id="pickerYesterdayNote"></div>
+    <div class="kpis" id="pickerYesterdayCards" style="grid-template-columns:repeat(6,1fr);margin:0"></div>
   </section>
+
+  <section class="picker-filter-card">
+    <div class="section-title">Filters</div>
+    <div class="picker-filters">
+      <div class="field">Pick User<select id="pickerUserFilter"><option value="">All Pick Users</option></select></div>
+      <div class="field">Bin Group<select id="pickerBinGroupFilter"><option value="">All Bin Groups</option></select></div>
+      <div class="field">Source Warehouse<select id="pickerWarehouseFilter"><option value="">All Warehouses</option></select></div>
+      <div class="field">Pick Date<input id="pickerDateFilter" type="date"></div>
+      <div class="field">Data Scope<select id="pickerScopeFilter"><option value="all">All Picker Data</option><option value="live">Live Report</option><option value="history">History</option></select></div>
+      <button type="button" onclick="clearPickerFilters()">Clear</button>
+    </div>
+  </section>
+
+  <section class="picker-section">
+    <h3>Picker-wise Performance</h3>
+    <div class="subnote">Picklist Count = unique Picklist No.; Order Count = unique Order No.; Order Qty = sum of Qty. Grouped by bin logic.</div>
+    <div class="picker-table-wrap">
+      <table class="picker-table">
+        <thead id="pickerPerformanceThead"></thead>
+        <tbody id="pickerPerformanceTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="picker-section">
+    <h3>Picker-wise Order Summary</h3>
+    <div class="subnote">Each picker's unique Order No. split by bin group: SPR, MTR and GP B2B.</div>
+    <div class="picker-table-wrap compact">
+      <table class="picker-table">
+        <thead><tr><th>Pick User</th><th>SPR Orders</th><th>MTR Orders</th><th>GP B2B Orders</th><th>Total Unique Orders</th></tr></thead>
+        <tbody id="pickerOrderSummaryTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="picker-section">
+    <h3>Bin Group Summary</h3>
+    <div class="subnote">Any Bin beginning with SPR is SPR, any Bin beginning with MTR is MTR, and every other Bin is GP B2B.</div>
+    <div class="picker-table-wrap compact">
+      <table class="picker-table" style="min-width:700px">
+        <thead><tr><th>Bin Group</th><th>Unique Picklists</th><th>Unique Orders</th><th>Order Qty</th></tr></thead>
+        <tbody id="pickerBinSummaryTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="picker-footnote">
+    Counting logic: Picklist Count = unique Picklist No. per picker/bin group; Order Count = unique Order No. per picker/bin group; Order Qty = sum of Qty. Bin grouping: SPR*, MTR*, and all remaining bins = GP B2B.
+    <span id="pickerLastSyncWrap"></span>
+  </div>
 </section>
 </main>
 
@@ -1484,213 +1524,152 @@ function clearFilters(){["warehouse","channel","status","orderType","fromDate","
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();slaDirty=false;}
 
 // ============================================================
-// PICKER REPORT TAB
+// PICKER PERFORMANCE DASHBOARD
 // ============================================================
-// Picker is intentionally loaded lazily so adding this report does NOT slow
-// the existing Order / Zoho / SLA / B2B / Returns tabs during initial load.
-let pickerRows = [];
-let pickerLoaded = false;
-let pickerLoading = false;
-let pickerDirty = true;
+let pickerRows=[],pickerLoaded=false,pickerLoading=false,pickerDirty=true;
+const PICKER_LIVE_FILE="data/picker_live.csv";
+const PICKER_HISTORY_FILE="data/picker_history.csv";
 
-const PICKER_LIVE_FILE = "data/picker_live.csv";
-const PICKER_HISTORY_FILE = "data/picker_history.csv";
-const PICKER_VISIBLE_ROW_LIMIT = 3000;
+function pickerNorm(v){return String(v??"").trim();}
+function pickerNum(v){const n=parseFloat(String(v??"").replace(/,/g,""));return Number.isFinite(n)?n:0;}
+function pickerOrder(r){return pickerNorm(r["Order No"]);}
+function pickerUser(r){return pickerNorm(r["Pick User"]);}
+function pickerWarehouse(r){return pickerNorm(r["Source WH"]);}
+function pickerPicklist(r){return pickerNorm(r["Picklist No."]);}
 
-function pickerNorm(v){ return String(v ?? "").trim(); }
-function pickerNum(v){
-  const n=parseFloat(String(v ?? "").replace(/,/g,""));
-  return Number.isFinite(n)?n:0;
-}
 function pickerDateKey(v){
-  const s=pickerNorm(v);
-  if(!s)return "";
+  const s=pickerNorm(v);if(!s)return "";
   let m=s.match(/^(\d{4})[-\/]([0-1]?\d)[-\/]([0-3]?\d)/);
   if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
   m=s.match(/^(\d{1,2})[-\/]([0-1]?\d)[-\/](\d{4})/);
   if(m)return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
-  const d=new Date(s);
-  if(Number.isNaN(d.getTime()))return "";
+  const d=new Date(s);if(Number.isNaN(d.getTime()))return "";
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
-function pickerTodayKey(){
-  const d=new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-function pickerOrder(r){ return pickerNorm(r["Order No"]); }
-function pickerUser(r){ return pickerNorm(r["Pick User"]); }
-function pickerType(r){ return pickerNorm(r["Order Type"]); }
-function pickerSku(r){ return pickerNorm(r["SKU Code"]); }
-function pickerCustomer(r){ return pickerNorm(r["Customer Name"]); }
+function pickerYesterdayKey(){const d=new Date();d.setDate(d.getDate()-1);return pickerDateKey(d);}
+function pickerBinGroup(r){const b=pickerNorm(r["Bin"]).toUpperCase();if(b.startsWith("SPR"))return "SPR";if(b.startsWith("MTR"))return "MTR";return "GP B2B";}
 
-async function fetchPickerCsv(path, cacheBust=false){
-  const url=cacheBust ? `${path}?ts=${Date.now()}` : path;
+async function fetchPickerCsv(path,cacheBust=false){
+  const url=cacheBust?`${path}?ts=${Date.now()}`:path;
   try{
-    const res=await fetch(url,{cache:cacheBust?"no-store":"default"});
-    if(!res.ok) return [];
+    const res=await fetch(url,{cache:cacheBust?"no-store":"default"});if(!res.ok)return [];
     const csv=await res.text();
-    return await new Promise((resolve,reject)=>{
-      Papa.parse(csv,{header:true,skipEmptyLines:true,complete:r=>resolve(Array.isArray(r.data)?r.data:[]),error:reject});
-    });
-  }catch(err){
-    console.warn(`Picker CSV fetch failed: ${path}`,err);
-    return [];
-  }
+    return await new Promise((resolve,reject)=>Papa.parse(csv,{header:true,skipEmptyLines:true,complete:r=>resolve(Array.isArray(r.data)?r.data:[]),error:reject}));
+  }catch(err){console.warn(`Picker CSV fetch failed: ${path}`,err);return [];}
 }
 
 async function loadPickerData(force=false){
   if(pickerLoading)return;
-  if(pickerLoaded && !force && !pickerDirty){
-    renderPickerTab();
-    return;
-  }
-  pickerLoading=true;
-  $("pickerResultNote").textContent="Loading Picker live + history data…";
+  if(pickerLoaded&&!force&&!pickerDirty){renderPickerTab();return;}
+  pickerLoading=true;$("pickerSourceNote").textContent="LIVE Picker Report • Loading…";
   try{
-    const [liveRows,historyRows,meta] = await Promise.all([
+    const [liveRows,historyRows,meta]=await Promise.all([
       fetchPickerCsv(PICKER_LIVE_FILE,true),
       fetchPickerCsv(PICKER_HISTORY_FILE,true),
       fetch(`data/picker-meta.json?ts=${Date.now()}`,{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null)
     ]);
-
-    const live=liveRows.map(r=>({...r,_pickerSource:"Today Live"}));
-    const history=historyRows.map(r=>({...r,_pickerSource:"History"}));
-    pickerRows=history.concat(live);
-    pickerLoaded=true;
-    pickerDirty=false;
-
-    if(meta && meta.generatedAt){
-      const d=new Date(meta.generatedAt);
-      $("pickerLastSync").textContent=Number.isNaN(d.getTime())?pickerNorm(meta.generatedAt):d.toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true});
-    }else{
-      $("pickerLastSync").textContent="—";
-    }
-
-    $("pickerSourceNote").textContent=`Today Live: ${live.length.toLocaleString()} lines • History: ${history.length.toLocaleString()} lines • Daily automation archives yesterday and keeps today live.`;
-    buildPickerFilters();
-    renderPickerTab();
+    pickerRows=[...historyRows.map(r=>({...r,_pickerSource:"History"})),...liveRows.map(r=>({...r,_pickerSource:"Live Report"}))];
+    pickerLoaded=true;pickerDirty=false;
+    let syncText="—";
+    if(meta&&meta.generatedAt){const d=new Date(meta.generatedAt);syncText=Number.isNaN(d.getTime())?pickerNorm(meta.generatedAt):d.toLocaleString("en-IN",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true});}
+    $("pickerLastSyncWrap").textContent=` • Last Sync: ${syncText}`;
+    $("pickerSourceNote").textContent=`LIVE Picker Report • ${liveRows.length.toLocaleString()} report rows • Updated/loaded ${syncText}`;
+    buildPickerFilters();renderPickerTab();
   }catch(err){
     console.error("Picker data load failed",err);
-    $("pickerResultNote").textContent="Picker data load failed. Check GitHub data files.";
-    $("pickerTbody").innerHTML=`<tr><td colspan="12" class="muted">Picker data could not be loaded.</td></tr>`;
-  }finally{
-    pickerLoading=false;
-  }
+    $("pickerSourceNote").textContent="Picker data load failed. Check GitHub data files.";
+    $("pickerPerformanceTbody").innerHTML='<tr><td colspan="13" class="muted">Picker data could not be loaded.</td></tr>';
+  }finally{pickerLoading=false;}
 }
 
+function pickerSourceRows(){
+  const scope=$("pickerScopeFilter").value||"all";
+  if(scope==="live")return pickerRows.filter(r=>r._pickerSource==="Live Report");
+  if(scope==="history")return pickerRows.filter(r=>r._pickerSource==="History");
+  return pickerRows;
+}
 function buildPickerFilters(){
-  const scope=$("pickerScopeFilter").value||"live";
-  const sourceRows=scope==="live"?pickerRows.filter(r=>r._pickerSource==="Today Live") : scope==="history"?pickerRows.filter(r=>r._pickerSource==="History") : pickerRows;
-  const dateSet=new Set(),userSet=new Set(),typeSet=new Set();
-  sourceRows.forEach(r=>{
-    const d=pickerDateKey(r["Pick Date"]||r["Order Date"]||r["Allocation Date"]);
-    if(d)dateSet.add(d);
-    if(pickerUser(r))userSet.add(pickerUser(r));
-    if(pickerType(r))typeSet.add(pickerType(r));
-  });
-  const dateSel=$("pickerDateFilter"),userSel=$("pickerUserFilter"),typeSel=$("pickerOrderTypeFilter");
-  const oldDate=dateSel.value,oldUser=userSel.value,oldType=typeSel.value;
-  dateSel.innerHTML=`<option value="">All Dates</option>`+Array.from(dateSet).sort().reverse().map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
-  userSel.innerHTML=`<option value="">All Pickers</option>`+Array.from(userSet).sort((a,b)=>a.localeCompare(b)).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  typeSel.innerHTML=`<option value="">All Types</option>`+Array.from(typeSet).sort((a,b)=>a.localeCompare(b)).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  if(Array.from(dateSet).includes(oldDate))dateSel.value=oldDate;
-  if(Array.from(userSet).includes(oldUser))userSel.value=oldUser;
-  if(Array.from(typeSet).includes(oldType))typeSel.value=oldType;
-
-  // Default Today Live view to today's date when the file contains today's data.
-  if(scope==="live" && !dateSel.value){
-    const today=pickerTodayKey();
-    if(dateSet.has(today))dateSel.value=today;
-  }
+  const rows=pickerSourceRows();
+  const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const groups=["SPR","MTR","GP B2B"].filter(g=>rows.some(r=>pickerBinGroup(r)===g));
+  const whs=[...new Set(rows.map(pickerWarehouse).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const us=$("pickerUserFilter"),gs=$("pickerBinGroupFilter"),ws=$("pickerWarehouseFilter");
+  const ou=us.value,og=gs.value,ow=ws.value;
+  us.innerHTML='<option value="">All Pick Users</option>'+users.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  gs.innerHTML='<option value="">All Bin Groups</option>'+groups.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  ws.innerHTML='<option value="">All Warehouses</option>'+whs.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if(users.includes(ou))us.value=ou;if(groups.includes(og))gs.value=og;if(whs.includes(ow))ws.value=ow;
 }
-
 function getFilteredPickerRows(){
-  const scope=$("pickerScopeFilter").value||"live";
-  const date=$("pickerDateFilter").value;
-  const user=$("pickerUserFilter").value;
-  const type=$("pickerOrderTypeFilter").value;
-  const q=pickerNorm($("pickerSearch").value).toLowerCase();
+  const scope=$("pickerScopeFilter").value||"all",user=$("pickerUserFilter").value,group=$("pickerBinGroupFilter").value,wh=$("pickerWarehouseFilter").value,date=$("pickerDateFilter").value;
   return pickerRows.filter(r=>{
-    if(scope==="live" && r._pickerSource!=="Today Live")return false;
-    if(scope==="history" && r._pickerSource!=="History")return false;
-    const d=pickerDateKey(r["Pick Date"]||r["Order Date"]||r["Allocation Date"]);
-    if(date && d!==date)return false;
-    if(user && pickerUser(r)!==user)return false;
-    if(type && pickerType(r)!==type)return false;
-    if(q){
-      const hay=[pickerOrder(r),pickerSku(r),pickerUser(r),pickerCustomer(r),pickerType(r),pickerNorm(r["Picklist No."]),pickerNorm(r["Bin"])].join(" ").toLowerCase();
-      if(!hay.includes(q))return false;
-    }
+    if(scope==="live"&&r._pickerSource!=="Live Report")return false;
+    if(scope==="history"&&r._pickerSource!=="History")return false;
+    if(user&&pickerUser(r)!==user)return false;
+    if(group&&pickerBinGroup(r)!==group)return false;
+    if(wh&&pickerWarehouse(r)!==wh)return false;
+    if(date&&pickerDateKey(r["Pick Date"])!==date)return false;
     return true;
   });
 }
+function pickerGroupStats(rows,group){
+  const x=rows.filter(r=>pickerBinGroup(r)===group);
+  return {rows:x.length,picklists:new Set(x.map(pickerPicklist).filter(Boolean)).size,orders:new Set(x.map(pickerOrder).filter(Boolean)).size,qty:x.reduce((s,r)=>s+pickerNum(r["Qty"]),0)};
+}
+function pickerKpi(label,value){return `<div class="picker-kpi"><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`;}
 
+function renderPickerKpis(rows){
+  const s=pickerGroupStats(rows,"SPR"),m=pickerGroupStats(rows,"MTR"),g=pickerGroupStats(rows,"GP B2B");
+  $("pickerKpis").innerHTML=[
+    ["Pick Users",new Set(rows.map(pickerUser).filter(Boolean)).size],
+    ["Picklist Count",new Set(rows.map(pickerPicklist).filter(Boolean)).size],
+    ["Order Count",new Set(rows.map(pickerOrder).filter(Boolean)).size],
+    ["Order Qty",rows.reduce((a,r)=>a+pickerNum(r["Qty"]),0)],
+    ["SPR Line Count",s.rows],["MTR Line Count",m.rows],["GP B2B Line Count",g.rows]
+  ].map(x=>pickerKpi(x[0],Number(x[1]).toLocaleString())).join("");
+}
+function renderPickerYesterday(){
+  const d=pickerYesterdayKey(),rows=pickerRows.filter(r=>pickerDateKey(r["Pick Date"])===d);
+  $("pickerYesterdayNote").textContent=`Yesterday (${d}) based on Pick Date.`;
+  $("pickerYesterdayCards").innerHTML=[
+    ["Pick Users",new Set(rows.map(pickerUser).filter(Boolean)).size],
+    ["Unique Orders",new Set(rows.map(pickerOrder).filter(Boolean)).size],
+    ["Order Qty",rows.reduce((a,r)=>a+pickerNum(r["Qty"]),0)],
+    ["SPR Orders",pickerGroupStats(rows,"SPR").orders],
+    ["MTR Orders",pickerGroupStats(rows,"MTR").orders],
+    ["GP B2B Orders",pickerGroupStats(rows,"GP B2B").orders]
+  ].map(x=>kpi(x[0],x[1])).join("");
+}
+function renderPickerPerformance(rows){
+  const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  $("pickerPerformanceThead").innerHTML=`<tr class="group-head"><th rowspan="2">Pick User</th><th colspan="3">SPR</th><th colspan="3">MTR</th><th colspan="3">GP B2B</th><th rowspan="2">Total Picklist Count</th><th rowspan="2">Total Order Count</th><th rowspan="2">Total Qty</th></tr><tr class="sub-head"><th>Picklist Count</th><th>Order Count</th><th>Qty</th><th>Picklist Count</th><th>Order Count</th><th>Qty</th><th>Picklist Count</th><th>Order Count</th><th>Qty</th></tr>`;
+  $("pickerPerformanceTbody").innerHTML=users.map(u=>{
+    const r=rows.filter(x=>pickerUser(x)===u),s=pickerGroupStats(r,"SPR"),m=pickerGroupStats(r,"MTR"),g=pickerGroupStats(r,"GP B2B");
+    return `<tr><td><b>${esc(u)}</b></td><td>${s.picklists.toLocaleString()}</td><td>${s.orders.toLocaleString()}</td><td>${s.qty.toLocaleString()}</td><td>${m.picklists.toLocaleString()}</td><td>${m.orders.toLocaleString()}</td><td>${m.qty.toLocaleString()}</td><td>${g.picklists.toLocaleString()}</td><td>${g.orders.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td><td><b>${new Set(r.map(pickerPicklist).filter(Boolean)).size.toLocaleString()}</b></td><td><b>${new Set(r.map(pickerOrder).filter(Boolean)).size.toLocaleString()}</b></td><td><b>${r.reduce((a,x)=>a+pickerNum(x["Qty"]),0).toLocaleString()}</b></td></tr>`;
+  }).join("")||'<tr><td colspan="13" class="muted">No Picker data found for the selected filters.</td></tr>';
+}
+function renderPickerOrderSummary(rows){
+  const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  $("pickerOrderSummaryTbody").innerHTML=users.map(u=>{
+    const r=rows.filter(x=>pickerUser(x)===u);
+    return `<tr><td><b>${esc(u)}</b></td><td>${pickerGroupStats(r,"SPR").orders.toLocaleString()}</td><td>${pickerGroupStats(r,"MTR").orders.toLocaleString()}</td><td>${pickerGroupStats(r,"GP B2B").orders.toLocaleString()}</td><td><b>${new Set(r.map(pickerOrder).filter(Boolean)).size.toLocaleString()}</b></td></tr>`;
+  }).join("")||'<tr><td colspan="5" class="muted">No Picker data found.</td></tr>';
+}
+function renderPickerBinSummary(rows){
+  $("pickerBinSummaryTbody").innerHTML=["SPR","MTR","GP B2B"].map(g=>{const s=pickerGroupStats(rows,g);return `<tr><td><b>${g}</b></td><td>${s.picklists.toLocaleString()}</td><td>${s.orders.toLocaleString()}</td><td>${s.qty.toLocaleString()}</td></tr>`;}).join("");
+}
 function renderPickerTab(){
   if(!pickerLoaded)return;
   const rows=getFilteredPickerRows();
-  const uniqueOrders=new Set(rows.map(pickerOrder).filter(Boolean)).size;
-  const totalQty=rows.reduce((s,r)=>s+pickerNum(r["Qty"]),0);
-  const pickers=new Set(rows.map(pickerUser).filter(Boolean)).size;
-  const skus=new Set(rows.map(pickerSku).filter(Boolean)).size;
-  const liveCount=rows.filter(r=>r._pickerSource==="Today Live").length;
-  const historyCount=rows.filter(r=>r._pickerSource==="History").length;
-  $("pickerKpis").innerHTML=[
-    ["Unique Orders",uniqueOrders.toLocaleString()],
-    ["Pick Qty",totalQty.toLocaleString()],
-    ["Pickers",pickers.toLocaleString()],
-    ["Unique SKUs",skus.toLocaleString()],
-    ["Live Lines",liveCount.toLocaleString()],
-    ["History Lines",historyCount.toLocaleString()]
-  ].map(x=>kpi(...x)).join("");
-
-  const cols=["Order No","Order Date","Allocation Date","SKU Code","SKU Description","Pick Date","Pick User","Bin","Qty","Customer Name","Picklist No.","Source WH"];
-  $("pickerThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
-  const visible=rows.slice(0,PICKER_VISIBLE_ROW_LIMIT);
-  $("pickerTbody").innerHTML=visible.map(r=>"<tr>"+cols.map(c=>`<td>${esc(r[c])}</td>`).join("")+"</tr>").join("") || `<tr><td colspan="12" class="muted">No Picker records found for the selected filters.</td></tr>`;
-  $("pickerResultNote").textContent=`Showing ${visible.length.toLocaleString()} of ${rows.length.toLocaleString()} matching line items • ${uniqueOrders.toLocaleString()} unique orders`+(rows.length>PICKER_VISIBLE_ROW_LIMIT?` • table capped at ${PICKER_VISIBLE_ROW_LIMIT.toLocaleString()} rows for speed`:"");
-  $("pickerCoverageNote").textContent=`Data loaded from ${PICKER_LIVE_FILE} + ${PICKER_HISTORY_FILE}. Search/filter runs on the already-loaded CSV data; no Vinculum request is made from the dashboard.`;
+  renderPickerKpis(rows);renderPickerYesterday();renderPickerPerformance(rows);renderPickerOrderSummary(rows);renderPickerBinSummary(rows);
+  const dates=[...new Set(pickerRows.map(r=>pickerDateKey(r["Pick Date"])).filter(Boolean))].sort();
+  $("pickerCoverageNote").textContent=`Picker data coverage (Pick Date): ${dates[0]||"—"} → ${dates[dates.length-1]||"—"} • ${pickerRows.length.toLocaleString()} report rows`;
 }
-
 function clearPickerFilters(){
-  $("pickerScopeFilter").value="live";
-  $("pickerDateFilter").value="";
-  $("pickerUserFilter").value="";
-  $("pickerOrderTypeFilter").value="";
-  $("pickerSearch").value="";
-  buildPickerFilters();
-  renderPickerTab();
+  $("pickerScopeFilter").value="all";$("pickerUserFilter").value="";$("pickerBinGroupFilter").value="";$("pickerWarehouseFilter").value="";$("pickerDateFilter").value="";
+  buildPickerFilters();renderPickerTab();
 }
-
-function refreshPickerIfNeeded(){
-  if($("pickerTab").classList.contains("active-panel")){
-    if(!pickerLoaded || pickerDirty) loadPickerData();
-    else renderPickerTab();
-  }
-}
-
-document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
-  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-  document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active-panel"));
-  btn.classList.add("active");
-  $(btn.dataset.tab).classList.add("active-panel");
-  if(btn.dataset.tab==="slaTab"||btn.dataset.tab==="zohoTab"||btn.dataset.tab==="b2bTab"||btn.dataset.tab==="returnsTab"||btn.dataset.tab==="pickerTab"){refreshActiveTabIfNeeded()}
-}));
-
-["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();}));
-["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
-$("zohoDateFilter").addEventListener("change",()=>{ zohoDateHistoryExpanded=false; renderZohoDocs(); });
-$("zohoDateSectionMonthFilter").addEventListener("change",()=>{ zohoDateHistoryExpanded=false; $("zohoDateFilter").value=""; renderZohoDocs(); });
-$("b2bShipDateFilter").addEventListener("change",renderB2BReports);
-$("zohoMonthFilter").addEventListener("change",renderZohoDocs);
-$("returnsDateFilter").addEventListener("change",()=>{ returnsDateHistoryExpanded=false; renderReturnsTab(); });
-$("returnsDateSectionMonthFilter").addEventListener("change",()=>{ returnsDateHistoryExpanded=false; $("returnsDateFilter").value=""; renderReturnsTab(); });
-$("returnsMonthFilter").addEventListener("change",renderReturnsTab);
-$("pickerScopeFilter").addEventListener("change",()=>{buildPickerFilters();renderPickerTab();});
-$("pickerDateFilter").addEventListener("change",renderPickerTab);
-$("pickerUserFilter").addEventListener("change",renderPickerTab);
-$("pickerOrderTypeFilter").addEventListener("change",renderPickerTab);
-$("pickerSearch").addEventListener("input",renderPickerTab);
-$("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
+function refreshPickerIfNeeded(){if($("pickerTab").classList.contains("active-panel")){if(!pickerLoaded||pickerDirty)loadPickerData();else renderPickerTab();}}
 
 // Bulk Remarks CSV/Excel Upload Option
 $("remarkFile").addEventListener("change",async e=>{
