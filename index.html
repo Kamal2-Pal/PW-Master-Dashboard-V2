@@ -189,13 +189,29 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </header>
 
 <div class="tabs">
-  <button class="tab active" data-tab="ordersTab">Order Fulfillment</button>
-  <button class="tab" data-tab="zohoTab">Zoho Docs</button>
-  <button class="tab" data-tab="slaTab">48H Ship SLA</button>
-  <button class="tab" data-tab="b2bTab">B2B_Reports</button>
-  <button class="tab" data-tab="returnsTab">Returns</button>
-  <button class="tab" data-tab="pickerTab">Picker Report</button>
+  <button type="button" class="tab active" data-tab="ordersTab" onclick="switchDashboardTab(this)">Order Fulfillment</button>
+  <button type="button" class="tab" data-tab="zohoTab" onclick="switchDashboardTab(this)">Zoho Docs</button>
+  <button type="button" class="tab" data-tab="slaTab" onclick="switchDashboardTab(this)">48H Ship SLA</button>
+  <button type="button" class="tab" data-tab="b2bTab" onclick="switchDashboardTab(this)">B2B_Reports</button>
+  <button type="button" class="tab" data-tab="returnsTab" onclick="switchDashboardTab(this)">Returns</button>
+  <button type="button" class="tab" data-tab="pickerTab" onclick="switchDashboardTab(this)">Picker Report</button>
 </div>
+
+<script>
+// Reliable tab switching: this is intentionally placed before the main dashboard script
+// so tabs keep working even if a later dashboard data/API call fails.
+function switchDashboardTab(btn){
+  document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
+  document.querySelectorAll(".tab-panel").forEach(function(x){ x.classList.remove("active-panel"); });
+
+  btn.classList.add("active");
+  var panel = document.getElementById(btn.getAttribute("data-tab"));
+  if(panel) panel.classList.add("active-panel");
+
+  // Run the existing lazy-load/refresh logic when available.
+  if(typeof refreshActiveTabIfNeeded === "function") refreshActiveTabIfNeeded();
+}
+</script>
 
 <main class="wrap">
 <section id="ordersTab" class="tab-panel active-panel">
@@ -1724,6 +1740,7 @@ $("file").addEventListener("change",async e=>{
   }
   e.target.value="";
 });
+
 
 async function loadAllExcelData(){
   $("sourceText").textContent = "Loading live data.xlsx & history files…";
