@@ -790,6 +790,108 @@ def find_print_button(driver):
     return None
 
 
+def _find_generated_download_controls(driver):
+    """Find Vinculum's generated report download control in the current frame.
+
+    IMPORTANT: after Print, Vinculum may take 1–3 minutes to generate the
+    report and only then render the actual download control. We therefore
+    inspect the DOM repeatedly instead of blocking for the full timeout on
+    filesystem downloads first.
+    """
+    controls = []
+
+    # 1) Most reliable: actual onclick containing download/downloadReport.
+    try:
+        for el in driver.find_elements(By.XPATH, "//*[@onclick]"):
+            try:
+                if not el.is_displayed() or not el.is_enabled():
+                    continue
+                onclick = norm(el.get_attribute("onclick")).lower()
+                if "download" in onclick or "downloadreport" in onclick:
+                    controls.append(el)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if controls:
+        return controls
+
+    # 2) IDs/classes/attributes containing download, but never Print controls.
+    try:
+        candidates = driver.find_elements(
+            By.CSS_SELECTOR,
+            "button, a, label, input, img, i, span, div"
+        )
+        for el in candidates:
+            try:
+                if not el.is_displayed() or not el.is_enabled():
+                    continue
+                meta = " ".join([
+                    norm(el.get_attribute("id")),
+                    norm(el.get_attribute("class")),
+                    norm(el.get_attribute("title")),
+                    norm(el.get_attribute("aria-label")),
+                    norm(el.get_attribute("data-action")),
+                    norm(el.get_attribute("data-url")),
+                ]).lower()
+                if "download" in meta and "print" not in meta:
+                    controls.append(el)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if controls:
+        return controls
+
+    # 3) Visible text fallback.
+    try:
+        for el in driver.find_elements(By.XPATH, "//*[self::button or self::a or self::label or self::span]"):
+            try:
+                if not el.is_displayed() or not el.is_enabled():
+                    continue
+                txt = visible_text(el).lower()
+                if "download" in txt and "print" not in txt:
+                    controls.append(el)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return controls
+
+
+def _search_download_in_frames(driver):
+    """Search current document and child frames; leave driver where found."""
+    try:
+        controls = _find_generated_download_controls(driver)
+        if controls:
+            return controls[0]
+    except Exception:
+        pass
+
+    try:
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+    except Exception:
+        frames = []
+
+    for fr in frames:
+        try:
+            driver.switch_to.frame(fr)
+            found = _search_download_in_frames(driver)
+            if found:
+                return found
+            driver.switch_to.parent_frame()
+        except Exception:
+            try:
+                driver.switch_to.parent_frame()
+            except Exception:
+                pass
+
+    return None
+
+
 def click_print_and_wait_for_download(driver):
     print_btn = find_print_button(driver)
     if not print_btn:
@@ -800,44 +902,56 @@ def click_print_and_wait_for_download(driver):
     click_js(driver, print_btn)
     print("Print click ho gaya. Vinculum report generate hone ka wait...")
 
-    # User observed 1–2 minutes. Do not stop early.
-    downloaded = wait_for_new_download(before, timeout=REPORT_WAIT_TIMEOUT)
-
-    if downloaded:
-        print("Picker report download complete:", os.path.basename(downloaded))
-        return downloaded
-
-    # Some versions expose a download button after report generation instead
-    # of starting the browser download immediately. Poll the DOM for it.
+    # The previous version waited 180 seconds only for a filesystem download.
+    # That was the problem: Vinculum does NOT necessarily download directly.
+    # It first generates the report and then shows a Download control.
+    # Poll both the filesystem AND the page for the full wait window.
     deadline = time.time() + REPORT_WAIT_TIMEOUT
+    last_log = 0
+
     while time.time() < deadline:
-        candidates = driver.find_elements(
-            By.XPATH,
-            "//*[contains(translate(@id,'DOWNLOAD','download'),'download') "
-            "or contains(translate(@class,'DOWNLOAD','download'),'download') "
-            "or contains(translate(normalize-space(.),'DOWNLOAD','download'),'download')]"
-        )
-        for el in candidates:
+        elapsed = int(REPORT_WAIT_TIMEOUT - (deadline - time.time()))
+        if elapsed - last_log >= 10:
+            print(f"   Report generation/download polling... {elapsed}s")
+            last_log = elapsed
+
+        # A direct browser download may already have started.
+        downloaded = wait_for_new_download(before, timeout=1)
+        if downloaded:
+            print("Picker report direct download complete:", os.path.basename(downloaded))
+            return downloaded
+
+        # Check all open windows/tabs. Some Vinculum builds render the
+        # generated report in a new tab/window.
+        original_handle = driver.current_window_handle
+        for handle in list(driver.window_handles):
             try:
-                if not el.is_displayed() or not el.is_enabled():
-                    continue
-                meta = all_text(el).lower()
-                if "download" in meta:
-                    before = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
-                    click_js(driver, el)
-                    downloaded = wait_for_new_download(
-                        before, timeout=30
-                    )
+                driver.switch_to.window(handle)
+                driver.switch_to.default_content()
+
+                # Search current page and nested report iframes.
+                found = _search_download_in_frames(driver)
+                if found:
+                    print("Generated Picker report Download control mil gaya.")
+                    before_click = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
+                    click_js(driver, found)
+                    downloaded = wait_for_new_download(before_click, timeout=60)
                     if downloaded:
                         print("Download button click se report mil gaya:",
                               os.path.basename(downloaded))
                         return downloaded
             except Exception:
                 pass
+            finally:
+                try:
+                    driver.switch_to.window(original_handle)
+                    driver.switch_to.default_content()
+                except Exception:
+                    pass
 
-        time.sleep(2)
+        time.sleep(1)
 
-    save_diagnostic(driver, "Picker report download timeout")
+    save_diagnostic(driver, "Picker report download timeout after DOM + filesystem polling")
     raise RuntimeError(
         f"Print ke baad {REPORT_WAIT_TIMEOUT} sec mein Picker report download nahi hui."
     )
