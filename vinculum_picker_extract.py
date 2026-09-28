@@ -1322,23 +1322,33 @@ def read_report(path):
         rows = list(reader)
         fieldnames = reader.fieldnames or []
 
-    normalized = {norm(x).lower(): x for x in fieldnames}
+    # Vinculum may return headers with trailing/leading spaces or
+    # minor whitespace differences (e.g. "Pack Size " vs "Pack Size").
+    # Normalize BOTH the actual CSV headers and the expected headers.
+    normalized = {}
+    for actual_name in fieldnames:
+        key = norm(actual_name).lower()
+        if key and key not in normalized:
+            normalized[key] = actual_name
 
-    missing = [
-        col for col in EXPECTED_COLUMNS
-        if col.lower() not in normalized
-    ]
+    missing = []
+    for col in EXPECTED_COLUMNS:
+        expected_key = norm(col).lower()
+        if expected_key not in normalized:
+            missing.append(col)
+
     if missing:
         raise RuntimeError(
             "Picker report columns mismatch. Missing: " + ", ".join(missing)
         )
 
-    # Map exact expected spelling to actual CSV field spelling.
+    # Map normalized expected names to the actual CSV field spelling.
     rows2 = []
     for row in rows:
         out = {}
         for col in EXPECTED_COLUMNS:
-            actual = normalized[col.lower()]
+            expected_key = norm(col).lower()
+            actual = normalized[expected_key]
             out[col] = row.get(actual, "")
         rows2.append(out)
 
