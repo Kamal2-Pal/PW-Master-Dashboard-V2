@@ -432,6 +432,7 @@ function switchDashboardTab(btn){
       <div class="field">Bin Group<select id="pickerBinGroupFilter"><option value="">All Bin Groups</option></select></div>
       <div class="field">Source Warehouse<select id="pickerWarehouseFilter"><option value="">All Warehouses</option></select></div>
       <div class="field">Pick Date<input id="pickerDateFilter" type="date"></div>
+      <div class="field">Order Type<select id="pickerOrderTypeFilter"><option value="">All Order Types</option></select></div>
       <div class="field">Data Scope<select id="pickerScopeFilter"><option value="all">All Picker Data</option><option value="live">Live Report</option><option value="history">History</option></select></div>
       <button type="button" onclick="clearPickerFilters()">Clear</button>
     </div>
@@ -1555,10 +1556,22 @@ function pickerPicklist(r){return pickerNorm(r["Picklist No."]);}
 
 function pickerDateKey(v){
   const s=pickerNorm(v);if(!s)return "";
-  let m=s.match(/^(\d{4})[-\/]([0-1]?\d)[-\/]([0-3]?\d)/);
+  // Vinculum Picker export commonly uses DD-MM-YY / DD-MM-YYYY with time.
+  let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
   if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
-  m=s.match(/^(\d{1,2})[-\/]([0-1]?\d)[-\/](\d{4})/);
-  if(m)return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2}|\d{4})(?:\s|$)/);
+  if(m){
+    let y=Number(m[3]);
+    if(m[3].length===2)y += y>=70 ? 1900 : 2000;
+    return `${y}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  }
+  // Also handle DD-MM-YY even when immediately followed by a time separator.
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2}|\d{4})/);
+  if(m){
+    let y=Number(m[3]);
+    if(m[3].length===2)y += y>=70 ? 1900 : 2000;
+    return `${y}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  }
   const d=new Date(s);if(Number.isNaN(d.getTime()))return "";
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
@@ -1609,15 +1622,18 @@ function buildPickerFilters(){
   const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const groups=["SPR","MTR","GP B2B"].filter(g=>rows.some(r=>pickerBinGroup(r)===g));
   const whs=[...new Set(rows.map(pickerWarehouse).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const us=$("pickerUserFilter"),gs=$("pickerBinGroupFilter"),ws=$("pickerWarehouseFilter");
-  const ou=us.value,og=gs.value,ow=ws.value;
+  const orderTypes=[...new Set(rows.map(r=>pickerNorm(r["Order Type"]||r["OrderType"])).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const us=$("pickerUserFilter"),gs=$("pickerBinGroupFilter"),ws=$("pickerWarehouseFilter"),ots=$("pickerOrderTypeFilter");
+  const ou=us.value,og=gs.value,ow=ws.value,oot=ots.value;
   us.innerHTML='<option value="">All Pick Users</option>'+users.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
   gs.innerHTML='<option value="">All Bin Groups</option>'+groups.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
   ws.innerHTML='<option value="">All Warehouses</option>'+whs.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  if(users.includes(ou))us.value=ou;if(groups.includes(og))gs.value=og;if(whs.includes(ow))ws.value=ow;
+  ots.innerHTML='<option value="">All Order Types</option>'+orderTypes.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if(users.includes(ou))us.value=ou;if(groups.includes(og))gs.value=og;if(whs.includes(ow))ws.value=ow;if(orderTypes.includes(oot))ots.value=oot;
 }
+
 function getFilteredPickerRows(){
-  const scope=$("pickerScopeFilter").value||"all",user=$("pickerUserFilter").value,group=$("pickerBinGroupFilter").value,wh=$("pickerWarehouseFilter").value,date=$("pickerDateFilter").value;
+  const scope=$("pickerScopeFilter").value||"all",user=$("pickerUserFilter").value,group=$("pickerBinGroupFilter").value,wh=$("pickerWarehouseFilter").value,date=$("pickerDateFilter").value,orderType=$("pickerOrderTypeFilter").value;
   return pickerRows.filter(r=>{
     if(scope==="live"&&r._pickerSource!=="Live Report")return false;
     if(scope==="history"&&r._pickerSource!=="History")return false;
@@ -1625,9 +1641,11 @@ function getFilteredPickerRows(){
     if(group&&pickerBinGroup(r)!==group)return false;
     if(wh&&pickerWarehouse(r)!==wh)return false;
     if(date&&pickerDateKey(r["Pick Date"])!==date)return false;
+    if(orderType&&pickerNorm(r["Order Type"]||r["OrderType"])!==orderType)return false;
     return true;
   });
 }
+
 function pickerGroupStats(rows,group){
   const x=rows.filter(r=>pickerBinGroup(r)===group);
   return {rows:x.length,picklists:new Set(x.map(pickerPicklist).filter(Boolean)).size,orders:new Set(x.map(pickerOrder).filter(Boolean)).size,qty:x.reduce((s,r)=>s+pickerNum(r["Qty"]),0)};
@@ -1682,9 +1700,19 @@ function renderPickerTab(){
   $("pickerCoverageNote").textContent=`Picker data coverage (Pick Date): ${dates[0]||"—"} → ${dates[dates.length-1]||"—"} • ${pickerRows.length.toLocaleString()} report rows`;
 }
 function clearPickerFilters(){
-  $("pickerScopeFilter").value="all";$("pickerUserFilter").value="";$("pickerBinGroupFilter").value="";$("pickerWarehouseFilter").value="";$("pickerDateFilter").value="";
+  $("pickerScopeFilter").value="all";$("pickerUserFilter").value="";$("pickerBinGroupFilter").value="";$("pickerWarehouseFilter").value="";$("pickerDateFilter").value="";$("pickerOrderTypeFilter").value="";
   buildPickerFilters();renderPickerTab();
 }
+
+// Picker filter events: changing any filter must immediately re-render the dashboard.
+["pickerUserFilter","pickerBinGroupFilter","pickerWarehouseFilter","pickerScopeFilter","pickerOrderTypeFilter"].forEach(id=>{
+  $(id).addEventListener("change",()=>{
+    // Scope changes the available dropdown values, so rebuild them first.
+    if(id==="pickerScopeFilter") buildPickerFilters();
+    renderPickerTab();
+  });
+});
+$("pickerDateFilter").addEventListener("change",()=>renderPickerTab());
 function refreshPickerIfNeeded(){if($("pickerTab").classList.contains("active-panel")){if(!pickerLoaded||pickerDirty)loadPickerData();else renderPickerTab();}}
 
 // Bulk Remarks CSV/Excel Upload Option
