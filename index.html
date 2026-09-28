@@ -316,20 +316,45 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
   <div class="sla-head">
     <div>
       <h2>Returns</h2>
-      <div class="note" id="returnsColumnNote">Month-wise comparison: quantity &amp; value shipped vs. quantity &amp; value returned.</div>
+      <div class="note" id="returnsColumnNote">Quantity comparison: shipped qty vs. returned qty.</div>
     </div>
   </div>
 
   <div class="kpis" id="returnsKpis"></div>
 
-  <div class="grid">
-    <section class="card"><div class="section-title">Month-wise Qty: Shipped vs Returned</div><div id="returnsQtyChart" class="dual-chart"></div></section>
-    <section class="card"><div class="section-title">Month-wise Value: Shipped vs Returned</div><div id="returnsValueChart" class="dual-chart"></div></section>
-  </div>
+  <section class="card" style="margin-bottom:16px">
+    <div class="section-title">Month-wise Qty: Shipped vs Returned</div>
+    <div id="returnsQtyChart" class="dual-chart"></div>
+  </section>
 
-  <section class="table-card">
-    <div class="section-title">Month-wise Shipped vs Return Detail</div>
-    <div class="table-wrap"><table><thead><tr><th>Month</th><th>Shipped Qty</th><th>Shipped Value</th><th>Return Qty</th><th>Return Value</th><th>Return Qty %</th><th>Return Value %</th></tr></thead><tbody id="returnsTbody"></tbody></table></div>
+  <section class="zoho-section">
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">Date-wise Returns Summary</div>
+        <div class="note">Shipped Qty by Actual_ShipDate &amp; Returned Qty by Material Received Date.</div>
+      </div>
+      <div class="zoho-filter">
+        <div class="field">Month<select id="returnsDateSectionMonthFilter"><option value="">All Months</option></select></div>
+        <div class="field">Date Filter<select id="returnsDateFilter"><option value="">All Dates</option></select></div>
+        <button onclick="clearReturnsDateFilter()">Clear</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Shipped Qty</th><th>Return Qty</th><th>Return Qty %</th></tr></thead><tbody id="returnsDateTbody"></tbody></table></div>
+    <div id="returnsDateShowMoreWrap" style="display:none;text-align:center;margin-top:10px;"><button id="returnsDateShowMoreBtn" type="button" onclick="toggleReturnsDateHistory()">Show More</button></div>
+  </section>
+
+  <section class="zoho-section">
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">Month-wise Returns Summary</div>
+        <div class="note">Month wise — Shipped Qty, Return Qty and Return Qty %.</div>
+      </div>
+      <div class="zoho-filter">
+        <div class="field">Month Filter<select id="returnsMonthFilter"><option value="">All Months</option></select></div>
+        <button onclick="clearReturnsMonthFilter()">Clear</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Month</th><th>Shipped Qty</th><th>Return Qty</th><th>Return Qty %</th></tr></thead><tbody id="returnsTbody"></tbody></table></div>
   </section>
 </section>
 </main>
@@ -1145,100 +1170,119 @@ function renderB2BReports(){
   ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
 }
 
-// Candidate column names for the shipped order's monetary value. This has
-// NOT been confirmed against the real data yet - update this list (or the
-// note below) once the exact column name is checked, per the request.
-const SHIPPED_VALUE_FIELDS = ["Order Amount","Order Value","Total Value","Invoice Value","MRP Value","Value","Shipped Value","Total Amount","Amount"];
+let returnsDateHistoryExpanded = false;
+function toggleReturnsDateHistory(){ returnsDateHistoryExpanded=!returnsDateHistoryExpanded; renderReturnsTab(); }
+function clearReturnsDateFilter(){
+  returnsDateHistoryExpanded=false;
+  if($("returnsDateFilter")) $("returnsDateFilter").value="";
+  if($("returnsDateSectionMonthFilter")) $("returnsDateSectionMonthFilter").value="";
+  renderReturnsTab();
+}
+function clearReturnsMonthFilter(){
+  if($("returnsMonthFilter")) $("returnsMonthFilter").value="";
+  renderReturnsTab();
+}
 
 function renderReturnsTab(){
-  // --- Shipped side: from orderRows (already scoped to the single warehouse),
-  // grouped by Actual_ShipDate's month. ---
-  const shippedByMonth = new Map();
+  // --- Shipped side: orderRows grouped by Actual_ShipDate (qty only) ---
+  const shippedByDate = new Map();
   orderRows.forEach(r=>{
-    const m = dateKey(get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"])).slice(0,7);
-    if(!m) return;
-    if(!shippedByMonth.has(m)) shippedByMonth.set(m,{qty:0,value:0});
-    const g=shippedByMonth.get(m);
-    g.qty += num(get(r,["Shipped Qty"]));
-    g.value += num(get(r,SHIPPED_VALUE_FIELDS));
+    const d = dateKey(get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]));
+    if(!d) return;
+    shippedByDate.set(d,(shippedByDate.get(d)||0)+num(get(r,["Shipped Qty"])));
   });
 
-  // --- Return side: from returnsRaw (Inbound Enquiry / GRN export),
-  // grouped by Material Received Date's month. ---
-  const returnByMonth = new Map();
+  // --- Return side: returnsRaw grouped by Material Received Date (qty only) ---
+  const returnByDate = new Map();
   returnsRaw.forEach(r=>{
-    const m = dateKey(get(r,["Material Received Date"])).slice(0,7);
-    if(!m) return;
-    if(!returnByMonth.has(m)) returnByMonth.set(m,{qty:0,value:0});
-    const g=returnByMonth.get(m);
-    g.qty += num(get(r,["Recieved Qty","Received Qty"]));
-    g.value += num(get(r,["GRN Value With Tax"]));
+    const d = dateKey(get(r,["Material Received Date"]));
+    if(!d) return;
+    returnByDate.set(d,(returnByDate.get(d)||0)+num(get(r,["Recieved Qty","Received Qty"])));
   });
 
-  const allMonths = unique([...shippedByMonth.keys(), ...returnByMonth.keys()]);
+  const allDates = unique([...shippedByDate.keys(), ...returnByDate.keys()]).sort((a,b)=>b.localeCompare(a));
+  const allMonths = unique(allDates.map(d=>d.slice(0,7))).sort();
 
-  if(!returnsRaw.length){
-    $("returnsColumnNote").textContent="No Returns data found in returns.xlsx or Returns History files. Shipped-side numbers below still reflect current order data.";
-  } else {
-    $("returnsColumnNote").textContent="Month-wise comparison: quantity & value shipped vs. quantity & value returned (current + historical Returns data).";
-  }
+  // Month aggregation
+  const shippedByMonth=new Map(), returnByMonth=new Map();
+  shippedByDate.forEach((q,d)=>{const m=d.slice(0,7); shippedByMonth.set(m,(shippedByMonth.get(m)||0)+q);});
+  returnByDate.forEach((q,d)=>{const m=d.slice(0,7); returnByMonth.set(m,(returnByMonth.get(m)||0)+q);});
 
-  function formatReturnQty(value){
+  $("returnsColumnNote").textContent = returnsRaw.length
+    ? "Quantity comparison: shipped qty vs. returned qty (current + historical Returns data)."
+    : "No Returns data found in returns.xlsx or Returns History files. Shipped-side numbers below still reflect current order data.";
+
+  function fmtQty(value){
     const n=Number(value||0), a=Math.abs(n);
     if(a>=1e9) return (n/1e9).toFixed(2)+"B";
     if(a>=1e6) return (n/1e6).toFixed(2)+"M";
     if(a>=1e3) return (n/1e3).toFixed(2)+"K";
     return n.toLocaleString(undefined,{maximumFractionDigits:2});
   }
+  const pct=(r,s)=> s ? (r/s*100).toFixed(1)+"%" : "0.0%";
 
-  function formatReturnValue(value){
-    const n=Number(value||0), a=Math.abs(n);
-    if(a>=1e9) return "₹"+(n/1e9).toFixed(2)+"B";
-    if(a>=1e6) return "₹"+(n/1e6).toFixed(2)+"M";
-    if(a>=1e3) return "₹"+(n/1e3).toFixed(2)+"K";
-    return "₹"+n.toLocaleString(undefined,{maximumFractionDigits:2});
-  }
-
-  let totalShippedQty=0,totalShippedValue=0,totalReturnQty=0,totalReturnValue=0;
-  allMonths.forEach(m=>{
-    const s=shippedByMonth.get(m)||{qty:0,value:0};
-    const r=returnByMonth.get(m)||{qty:0,value:0};
-    totalShippedQty+=s.qty; totalShippedValue+=s.value;
-    totalReturnQty+=r.qty; totalReturnValue+=r.value;
-  });
-  const returnQtyPct = totalShippedQty ? (totalReturnQty/totalShippedQty*100) : 0;
-  const returnValuePct = totalShippedValue ? (totalReturnValue/totalShippedValue*100) : 0;
-
+  // --- KPIs ---
+  let totalShippedQty=0,totalReturnQty=0;
+  shippedByMonth.forEach(v=>totalShippedQty+=v);
+  returnByMonth.forEach(v=>totalReturnQty+=v);
   $("returnsKpis").innerHTML=[
-    ["Total Shipped Qty",formatReturnQty(totalShippedQty)],
-    ["Total Shipped Value",formatReturnValue(totalShippedValue)],
-    ["Total Return Qty",formatReturnQty(totalReturnQty)],
-    ["Total Return Value",formatReturnValue(totalReturnValue)],
-    ["Return Qty %",returnQtyPct.toFixed(1)+"%"],
-    ["Return Value %",returnValuePct.toFixed(1)+"%"]
+    ["Total Shipped Qty",fmtQty(totalShippedQty)],
+    ["Total Return Qty",fmtQty(totalReturnQty)],
+    ["Return Qty %",pct(totalReturnQty,totalShippedQty)]
   ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
 
-  function buildDualChart(el, dataFn, formatFn){
-    if(!allMonths.length){ el.innerHTML='<div class="note">No data</div>'; return; }
-    const max = Math.max(...allMonths.map(m=>{const d=dataFn(m); return Math.max(d.shipped,d.returned);}),1);
-    el.innerHTML = `<div class="legend"><span><i style="background:#2d8cff"></i>Shipped</span><span><i style="background:#e0554f"></i>Returned</span></div>`+
+  // --- Qty chart (month-wise) ---
+  const chartEl=$("returnsQtyChart");
+  if(!allMonths.length){ chartEl.innerHTML='<div class="note">No data</div>'; }
+  else{
+    const max=Math.max(...allMonths.map(m=>Math.max(shippedByMonth.get(m)||0,returnByMonth.get(m)||0)),1);
+    chartEl.innerHTML=`<div class="legend"><span><i style="background:#2d8cff"></i>Shipped</span><span><i style="background:#e0554f"></i>Returned</span></div>`+
       `<div class="bars">${allMonths.map(m=>{
-        const d=dataFn(m);
-        const sH=Math.max(3,d.shipped/max*200), rH=Math.max(3,d.returned/max*200);
-        return `<div class="month-group"><div class="pair"><div class="shipped" style="height:${sH}px" title="Shipped: ${formatFn(d.shipped)}"></div><div class="returned" style="height:${rH}px" title="Returned: ${formatFn(d.returned)}"></div></div><span>${m}</span></div>`;
+        const sv=shippedByMonth.get(m)||0, rv=returnByMonth.get(m)||0;
+        const sH=Math.max(3,sv/max*200), rH=Math.max(3,rv/max*200);
+        return `<div class="month-group"><div class="pair"><div class="shipped" style="height:${sH}px" title="Shipped: ${fmtQty(sv)}"></div><div class="returned" style="height:${rH}px" title="Returned: ${fmtQty(rv)}"></div></div><span>${m}</span></div>`;
       }).join("")}</div>`;
   }
 
-  buildDualChart($("returnsQtyChart"), m=>({shipped:(shippedByMonth.get(m)||{qty:0}).qty, returned:(returnByMonth.get(m)||{qty:0}).qty}), formatReturnQty);
-  buildDualChart($("returnsValueChart"), m=>({shipped:(shippedByMonth.get(m)||{value:0}).value, returned:(returnByMonth.get(m)||{value:0}).value}), formatReturnValue);
+  // --- Filters (Month -> Date, plus separate Month filter for month table) ---
+  const dateMonthEl=$("returnsDateSectionMonthFilter"), dateEl=$("returnsDateFilter"), monthEl=$("returnsMonthFilter");
+  const oldDateMonth=dateMonthEl.value, oldDate=dateEl.value, oldMonth=monthEl.value;
+  const monthsDesc=[...allMonths].sort((a,b)=>b.localeCompare(a));
+  const monthOpts='<option value="">All Months</option>'+monthsDesc.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  dateMonthEl.innerHTML=monthOpts; if(monthsDesc.includes(oldDateMonth)) dateMonthEl.value=oldDateMonth;
+  monthEl.innerHTML=monthOpts; if(monthsDesc.includes(oldMonth)) monthEl.value=oldMonth;
+  const dateMonthFilter=dateMonthEl.value;
+  const dateOptsList=dateMonthFilter ? allDates.filter(d=>d.startsWith(dateMonthFilter)) : allDates;
+  dateEl.innerHTML='<option value="">All Dates</option>'+dateOptsList.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
+  if(dateOptsList.includes(oldDate)) dateEl.value=oldDate;
+  const dateFilter=dateEl.value, monthFilter=monthEl.value;
 
-  $("returnsTbody").innerHTML = allMonths.map(m=>{
-    const s=shippedByMonth.get(m)||{qty:0,value:0};
-    const r=returnByMonth.get(m)||{qty:0,value:0};
-    const qPct = s.qty ? (r.qty/s.qty*100) : 0;
-    const vPct = s.value ? (r.value/s.value*100) : 0;
-    return `<tr><td>${m}</td><td>${formatReturnQty(s.qty)}</td><td>${formatReturnValue(s.value)}</td><td>${formatReturnQty(r.qty)}</td><td>${formatReturnValue(r.value)}</td><td>${qPct.toFixed(1)}%</td><td>${vPct.toFixed(1)}%</td></tr>`;
-  }).join("") || `<tr><td colspan="7" class="muted">No data available.</td></tr>`;
+  // --- Date-wise summary (default: current month only, Show More for history) ---
+  let dateList=allDates;
+  if(dateFilter) dateList=allDates.filter(d=>d===dateFilter);
+  else if(dateMonthFilter) dateList=allDates.filter(d=>d.startsWith(dateMonthFilter));
+  let visible=dateList, hasHidden=false;
+  if(!dateFilter && !dateMonthFilter && !returnsDateHistoryExpanded){
+    const cur=todayDateKey().slice(0,7);
+    visible=dateList.filter(d=>d.startsWith(cur));
+    hasHidden=dateList.length>visible.length;
+  }
+  $("returnsDateTbody").innerHTML=visible.map(d=>{
+    const sv=shippedByDate.get(d)||0, rv=returnByDate.get(d)||0;
+    return `<tr><td>${esc(d)}</td><td>${sv.toLocaleString()}</td><td>${rv.toLocaleString()}</td><td>${pct(rv,sv)}</td></tr>`;
+  }).join("") || `<tr><td colspan="4" class="muted">No data for the selected date/month.</td></tr>`;
+
+  const wrap=$("returnsDateShowMoreWrap"), btn=$("returnsDateShowMoreBtn");
+  const showBtn = !dateFilter && !dateMonthFilter && (hasHidden || returnsDateHistoryExpanded);
+  wrap.style.display=showBtn?"block":"none";
+  btn.textContent=returnsDateHistoryExpanded?"Show Less":"Show More";
+
+  // --- Month-wise summary ---
+  const monthList=(monthFilter?monthsDesc.filter(m=>m===monthFilter):monthsDesc);
+  $("returnsTbody").innerHTML=monthList.map(m=>{
+    const sv=shippedByMonth.get(m)||0, rv=returnByMonth.get(m)||0;
+    return `<tr><td>${esc(m)}</td><td>${sv.toLocaleString()}</td><td>${rv.toLocaleString()}</td><td>${pct(rv,sv)}</td></tr>`;
+  }).join("") || `<tr><td colspan="4" class="muted">No data available.</td></tr>`;
 }
 
 let zohoDateHistoryExpanded = false;
@@ -1387,6 +1431,9 @@ $("zohoDateFilter").addEventListener("change",()=>{ zohoDateHistoryExpanded=fals
 $("zohoDateSectionMonthFilter").addEventListener("change",()=>{ zohoDateHistoryExpanded=false; $("zohoDateFilter").value=""; renderZohoDocs(); });
 $("b2bShipDateFilter").addEventListener("change",renderB2BReports);
 $("zohoMonthFilter").addEventListener("change",renderZohoDocs);
+$("returnsDateFilter").addEventListener("change",()=>{ returnsDateHistoryExpanded=false; renderReturnsTab(); });
+$("returnsDateSectionMonthFilter").addEventListener("change",()=>{ returnsDateHistoryExpanded=false; $("returnsDateFilter").value=""; renderReturnsTab(); });
+$("returnsMonthFilter").addEventListener("change",renderReturnsTab);
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();refreshActiveTabIfNeeded();});
 
 // Bulk Remarks CSV/Excel Upload Option
