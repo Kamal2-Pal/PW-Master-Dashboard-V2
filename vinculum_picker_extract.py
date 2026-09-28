@@ -1278,10 +1278,9 @@ def click_print_and_wait_for_download(driver):
 
     print("Excel download hone ka wait...")
 
-    downloaded_file = wait_for_download(
-        DOWNLOAD_FOLDER,
+    downloaded_file = wait_for_new_download(
+        files_before_download,
         timeout=120,
-        existing_files=files_before_download,
     )
 
     if not downloaded_file:
