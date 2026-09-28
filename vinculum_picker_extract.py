@@ -467,17 +467,22 @@ def open_pick_pack_report(driver):
                 print("Pick Pack Report open ho gaya.")
                 return
 
-        # If the application menu is inside an iframe, search there too.
+        # If the application/report is inside an iframe, search there too.
+        # IMPORTANT: when the report is found inside the iframe, DO NOT switch
+        # back to default_content(). The next step (B2B Orders) is inside the
+        # same report iframe.
         driver.switch_to.default_content()
         frames = driver.find_elements(By.TAG_NAME, "iframe")
 
         for fr in frames:
+            found_in_frame = False
             try:
                 driver.switch_to.default_content()
                 driver.switch_to.frame(fr)
 
                 if report_screen_present():
                     print("Pick Pack Report iframe ke andar open hai.")
+                    found_in_frame = True
                     return
 
                 if click_actual_pick_pack_menu():
@@ -485,14 +490,16 @@ def open_pick_pack_report(driver):
                     time.sleep(2)
                     if report_screen_present():
                         print("Pick Pack Report iframe se open ho gaya.")
+                        found_in_frame = True
                         return
             except Exception:
                 pass
             finally:
-                try:
-                    driver.switch_to.default_content()
-                except Exception:
-                    pass
+                if not found_in_frame:
+                    try:
+                        driver.switch_to.default_content()
+                    except Exception:
+                        pass
 
         # Last fallback: use the site's real openScreen function only when
         # its function exists AND the DOM exposes a Pick/Pack menu action.
@@ -569,9 +576,67 @@ def click_label_by_text(driver, text, exact=False):
     return False
 
 
+def click_option_across_frames(driver, text):
+    """Click a report option in the current document or any child iframe.
+
+    Vinculum opens the Pick Pack Report inside an iframe. The previous run
+    proved that the report iframe was open, but the next step searched only
+    the top-level document, so B2B Orders was not found. This helper searches
+    the active document first and then child iframes, leaving Selenium in the
+    frame where the option was actually clicked.
+    """
+    if click_label_by_text(driver, text):
+        return True
+
+    try:
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+    except Exception:
+        frames = []
+
+    for fr in frames:
+        try:
+            driver.switch_to.frame(fr)
+            if click_label_by_text(driver, text):
+                return True
+
+            # One additional level is enough for the nested Vinculum report
+            # frame seen in the live run.
+            child_frames = driver.find_elements(By.TAG_NAME, "iframe")
+            for child in child_frames:
+                try:
+                    driver.switch_to.frame(child)
+                    if click_label_by_text(driver, text):
+                        return True
+                    driver.switch_to.parent_frame()
+                except Exception:
+                    try:
+                        driver.switch_to.parent_frame()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        finally:
+            # If the click succeeded, we intentionally stay in that frame.
+            try:
+                current = driver.execute_script("return window.frameElement;")
+                if current is not None:
+                    # Do not reset here; caller needs the successful frame.
+                    pass
+            except Exception:
+                pass
+
+        # Reset only when this frame did not contain the option.
+        try:
+            driver.switch_to.default_content()
+        except Exception:
+            pass
+
+    return False
+
+
 def select_b2b_orders(driver):
-    if not click_label_by_text(driver, "B2B Orders"):
-        save_diagnostic(driver, "B2B Orders radio not found")
+    if not click_option_across_frames(driver, "B2B Orders"):
+        save_diagnostic(driver, "B2B Orders radio not found in report frame")
         raise RuntimeError("B2B Orders select nahi hua.")
 
     time.sleep(0.5)
@@ -579,8 +644,8 @@ def select_b2b_orders(driver):
 
 
 def select_picked_report(driver):
-    if not click_label_by_text(driver, "Picked Report"):
-        save_diagnostic(driver, "Picked Report radio not found")
+    if not click_option_across_frames(driver, "Picked Report"):
+        save_diagnostic(driver, "Picked Report radio not found in report frame")
         raise RuntimeError("Picked Report select nahi hua.")
 
     time.sleep(0.5)
