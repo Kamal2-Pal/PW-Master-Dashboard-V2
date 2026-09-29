@@ -1559,6 +1559,17 @@ function pickerField(r, names){
 }
 function pickerOrder(r){return pickerNorm(pickerField(r,["Order No","OrderNo"]));}
 function pickerUser(r){return pickerNorm(pickerField(r,["Pick User","PickUser"]));}
+function pickerUserKeyValue(v){return pickerNorm(v).replace(/\s+/g," ").toLowerCase();}
+function pickerUserKey(r){return pickerUserKeyValue(pickerUser(r));}
+function pickerUserDisplayMap(rows){
+  const m=new Map();
+  rows.forEach(r=>{
+    const raw=pickerNorm(pickerUser(r));
+    const key=pickerUserKeyValue(raw);
+    if(raw && !m.has(key)) m.set(key,raw);
+  });
+  return m;
+}
 function pickerWarehouse(r){return pickerNorm(pickerField(r,["Source WH","SourceWH"]));}
 function pickerPicklist(r){return pickerNorm(pickerField(r,["Picklist No.","Picklist No","PicklistNo"]));}
 
@@ -1627,7 +1638,8 @@ function pickerSourceRows(){
 }
 function buildPickerFilters(){
   const rows=pickerSourceRows();
-  const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const userMap=pickerUserDisplayMap(rows);
+  const users=[...userMap.values()].sort((a,b)=>a.localeCompare(b));
   const groups=["SPR","MTR","GP B2B"].filter(g=>rows.some(r=>pickerBinGroup(r)===g));
   const whs=[...new Set(rows.map(pickerWarehouse).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   // Picker Report Order Type is a fixed field in the Vinculum Picker Report.
@@ -1668,7 +1680,7 @@ function pickerKpi(label,value){return `<div class="picker-kpi"><small>${esc(lab
 function renderPickerKpis(rows){
   const s=pickerGroupStats(rows,"SPR"),m=pickerGroupStats(rows,"MTR"),g=pickerGroupStats(rows,"GP B2B");
   $("pickerKpis").innerHTML=[
-    ["Pick Users",new Set(rows.map(pickerUser).filter(Boolean)).size],
+    ["Pick Users",new Set(rows.map(pickerUserKey).filter(Boolean)).size],
     ["Picklist Count",new Set(rows.map(pickerPicklist).filter(Boolean)).size],
     ["Order Count",new Set(rows.map(pickerOrder).filter(Boolean)).size],
     ["Order Qty",rows.reduce((a,r)=>a+pickerNum(pickerField(r,["Qty","Quantity"])),0)],
@@ -1679,7 +1691,7 @@ function renderPickerYesterday(){
   const d=pickerYesterdayKey(),rows=pickerRows.filter(r=>pickerDateKey(pickerField(r,["Pick Date","PickDate"]))===d);
   $("pickerYesterdayNote").textContent=`Yesterday (${d}) based on Pick Date.`;
   $("pickerYesterdayCards").innerHTML=[
-    ["Pick Users",new Set(rows.map(pickerUser).filter(Boolean)).size],
+    ["Pick Users",new Set(rows.map(pickerUserKey).filter(Boolean)).size],
     ["Unique Orders",new Set(rows.map(pickerOrder).filter(Boolean)).size],
     ["Order Qty",rows.reduce((a,r)=>a+pickerNum(pickerField(r,["Qty","Quantity"])),0)],
     ["SPR Orders",pickerGroupStats(rows,"SPR").orders],
@@ -1688,17 +1700,19 @@ function renderPickerYesterday(){
   ].map(x=>kpi(x[0],x[1])).join("");
 }
 function renderPickerPerformance(rows){
-  const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const userMap=pickerUserDisplayMap(rows);
+  const users=[...userMap.keys()].sort((a,b)=>userMap.get(a).localeCompare(userMap.get(b)));
   $("pickerPerformanceThead").innerHTML=`<tr class="group-head"><th rowspan="2">Pick User</th><th colspan="3">SPR</th><th colspan="3">MTR</th><th colspan="3">GP B2B</th><th rowspan="2">Total Picklist Count</th><th rowspan="2">Total Order Count</th><th rowspan="2">Total Qty</th></tr><tr class="sub-head"><th>Picklist Count</th><th>Order Count</th><th>Qty</th><th>Picklist Count</th><th>Order Count</th><th>Qty</th><th>Picklist Count</th><th>Order Count</th><th>Qty</th></tr>`;
   $("pickerPerformanceTbody").innerHTML=users.map(u=>{
-    const r=rows.filter(x=>pickerUser(x)===u),s=pickerGroupStats(r,"SPR"),m=pickerGroupStats(r,"MTR"),g=pickerGroupStats(r,"GP B2B");
+    const r=rows.filter(x=>pickerUserKey(x)===u),s=pickerGroupStats(r,"SPR"),m=pickerGroupStats(r,"MTR"),g=pickerGroupStats(r,"GP B2B");
     return `<tr><td><b>${esc(u)}</b></td><td>${s.picklists.toLocaleString()}</td><td>${s.orders.toLocaleString()}</td><td>${s.qty.toLocaleString()}</td><td>${m.picklists.toLocaleString()}</td><td>${m.orders.toLocaleString()}</td><td>${m.qty.toLocaleString()}</td><td>${g.picklists.toLocaleString()}</td><td>${g.orders.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td><td><b>${new Set(r.map(pickerPicklist).filter(Boolean)).size.toLocaleString()}</b></td><td><b>${new Set(r.map(pickerOrder).filter(Boolean)).size.toLocaleString()}</b></td><td><b>${r.reduce((a,x)=>a+pickerNum(x["Qty"]),0).toLocaleString()}</b></td></tr>`;
   }).join("")||'<tr><td colspan="13" class="muted">No Picker data found for the selected filters.</td></tr>';
 }
 function renderPickerOrderSummary(rows){
-  const users=[...new Set(rows.map(pickerUser).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const userMap=pickerUserDisplayMap(rows);
+  const users=[...userMap.keys()].sort((a,b)=>userMap.get(a).localeCompare(userMap.get(b)));
   $("pickerOrderSummaryTbody").innerHTML=users.map(u=>{
-    const r=rows.filter(x=>pickerUser(x)===u);
+    const r=rows.filter(x=>pickerUserKey(x)===u);
     return `<tr><td><b>${esc(u)}</b></td><td>${pickerGroupStats(r,"SPR").orders.toLocaleString()}</td><td>${pickerGroupStats(r,"MTR").orders.toLocaleString()}</td><td>${pickerGroupStats(r,"GP B2B").orders.toLocaleString()}</td><td><b>${new Set(r.map(pickerOrder).filter(Boolean)).size.toLocaleString()}</b></td></tr>`;
   }).join("")||'<tr><td colspan="5" class="muted">No Picker data found.</td></tr>';
 }
