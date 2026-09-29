@@ -1726,6 +1726,64 @@ function clearPickerFilters(){
   });
 });
 $("pickerDateFilter").addEventListener("change",()=>renderPickerTab());
+
+// ============================================================
+// RESTORED DASHBOARD FILTER EVENTS
+// ============================================================
+// These bindings were accidentally missing, so dropdown/date changes
+// were changing the UI value but not re-running the corresponding render.
+["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>{
+  const el=$(id);
+  if(el) el.addEventListener("change",()=>{renderOrders();refreshActiveTabIfNeeded();});
+});
+
+["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>{
+  const el=$(id);
+  if(el) el.addEventListener("change",applySlaFilters);
+});
+
+const zohoDateFilterEl=$("zohoDateFilter");
+if(zohoDateFilterEl) zohoDateFilterEl.addEventListener("change",()=>{
+  zohoDateHistoryExpanded=false;
+  renderZohoDocs();
+});
+
+const zohoDateSectionMonthFilterEl=$("zohoDateSectionMonthFilter");
+if(zohoDateSectionMonthFilterEl) zohoDateSectionMonthFilterEl.addEventListener("change",()=>{
+  zohoDateHistoryExpanded=false;
+  $("zohoDateFilter").value="";
+  renderZohoDocs();
+});
+
+const b2bShipDateFilterEl=$("b2bShipDateFilter");
+if(b2bShipDateFilterEl) b2bShipDateFilterEl.addEventListener("change",renderB2BReports);
+
+const zohoMonthFilterEl=$("zohoMonthFilter");
+if(zohoMonthFilterEl) zohoMonthFilterEl.addEventListener("change",renderZohoDocs);
+
+const returnsDateFilterEl=$("returnsDateFilter");
+if(returnsDateFilterEl) returnsDateFilterEl.addEventListener("change",()=>{
+  returnsDateHistoryExpanded=false;
+  renderReturnsTab();
+});
+
+const returnsDateSectionMonthFilterEl=$("returnsDateSectionMonthFilter");
+if(returnsDateSectionMonthFilterEl) returnsDateSectionMonthFilterEl.addEventListener("change",()=>{
+  returnsDateHistoryExpanded=false;
+  $("returnsDateFilter").value="";
+  renderReturnsTab();
+});
+
+const returnsMonthFilterEl=$("returnsMonthFilter");
+if(returnsMonthFilterEl) returnsMonthFilterEl.addEventListener("change",renderReturnsTab);
+
+const globalOrderSearchEl=$("globalOrderSearch");
+if(globalOrderSearchEl) globalOrderSearchEl.addEventListener("input",()=>{
+  renderOrders();
+  refreshActiveTabIfNeeded();
+});
+
+$("pickerDateFilter").addEventListener("change",()=>renderPickerTab());
 function refreshPickerIfNeeded(){if($("pickerTab").classList.contains("active-panel")){if(!pickerLoaded||pickerDirty)loadPickerData();else renderPickerTab();}}
 
 // Bulk Remarks CSV/Excel Upload Option
