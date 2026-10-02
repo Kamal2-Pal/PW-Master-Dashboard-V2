@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-10-01T09:52:00.571331Z",
-  "today": "2026-10-01",
-  "yesterdayArchived": "2026-09-30",
-  "sourceRows": 7409,
-  "liveRows": 7409,
-  "yesterdayRows": 0,
-  "historyRows": 39082
+  "generatedAt": "2026-10-02T09:28:19.695159Z",
+  "today": "2026-10-02",
+  "yesterdayArchived": "2026-10-01",
+  "sourceRows": 8928,
+  "liveRows": 0,
+  "yesterdayRows": 8928,
+  "historyRows": 47999
 }
