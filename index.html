@@ -333,7 +333,7 @@ function switchDashboardTab(btn){
   <div class="sla-head">
     <div>
       <h2>B2B Reports</h2>
-      <div class="note">Shipped-order summary by Finance Category &amp; Transporter for a chosen Dispatch Date, plus the Pending Orders snapshot for the same date.</div>
+      <div class="note">Shipped-order summary by Finance Category &amp; Transporter for a chosen Ship Date, plus a running Pending Orders summary by Finance Category.</div>
     </div>
   </div>
 
@@ -344,7 +344,7 @@ function switchDashboardTab(btn){
         <div class="note">Filtered by Actual_ShipDate. Defaults to today.</div>
       </div>
       <div class="zoho-filter">
-        <div class="field">Dispatch Date<input id="b2bShipDateFilter" type="date"></div>
+        <div class="field">Ship Date<input id="b2bShipDateFilter" type="date"></div>
         <button onclick="clearB2BDateFilter()">Today</button>
       </div>
     </div>
@@ -353,7 +353,7 @@ function switchDashboardTab(btn){
 
   <section class="zoho-section">
     <div class="section-title">Pending Orders Summary — By Finance Category</div>
-    <div class="note">Pending snapshot for the selected Dispatch Date. Includes orders created on or before that date that were still pending on that date, even if they were created on earlier days.</div>
+    <div class="note">Orders not yet shipped (current snapshot, not tied to the Ship Date filter above).</div>
     <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Warehouse</th><th>Count of Order No</th><th>Sum of Order Qty</th><th>Sum of Committed Qty</th></tr></thead><tbody id="b2bPendingTbody"></tbody></table></div>
   </section>
 </section>
@@ -1264,28 +1264,13 @@ function renderB2BReports(){
     || `<tr><td colspan="5" class="muted">No orders shipped on ${esc(shipDateFilter)}.</td></tr>`
   ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="3">Grand Total</td><td>${shippedTotalOrders.toLocaleString()}</td><td>${shippedTotalQty.toLocaleString()}</td></tr>`;
 
-  // --- Pending Orders Summary: By Finance Category & Warehouse ---
-  // This is a historical pending snapshot based on the selected Dispatch Date.
-  // Example: if 05-Oct is selected, an order created on 01/03/04-Oct is also
-  // included when it was still pending on 05-Oct. An order is pending on the
-  // selected date when it was created on/before that date and its ship date is
-  // blank OR falls after the selected date.
-  // If no date is selected, keep the previous behaviour and show the current
-  // pending snapshot.
-  const pendingSnapshotDate=shipDateFilter || todayDateKey();
+  // --- Pending Orders Summary: By Finance Category & Warehouse (current snapshot, not date-filtered) ---
   const pendingRows=orderRows.filter(r=>{
-    const orderDate=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));
-    if(orderDate && orderDate>pendingSnapshotDate) return false;
-
     const status=norm(get(r,["Status"])).toLowerCase();
     if(status==="cancelled"||status==="closed") return false;
-
-    const sd=dateKey(get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]));
-    // No ship date = pending. Ship date after the selected date = it was
-    // still pending on the selected date. Ship date on/before the selected
-    // date = already dispatched, so exclude it from that snapshot.
-    if(sd && sd<=pendingSnapshotDate) return false;
-    return true;
+    if(SHIPPED_STATUSES.has(status)) return false;
+    const sd=get(r,["Actual_ShipDate","Ship_Date","Shipped_Date"]);
+    return !norm(sd); // no ship date recorded yet = still pending
   });
   const pendingGroups=new Map(); // key: "financeCategory||warehouse"
   pendingRows.forEach(r=>{
@@ -1304,8 +1289,8 @@ function renderB2BReports(){
   const pendingTotalQty=pendingList.reduce((s,g)=>s+g.qty,0);
   $("b2bPendingTbody").innerHTML=(
     pendingList.map(g=>`<tr><td>${esc(g.fc)}</td><td>${esc(g.wh)}</td><td>${g.count.toLocaleString()}</td><td>${g.orderQty.toLocaleString()}</td><td>${g.qty.toLocaleString()}</td></tr>`).join("")
-    || `<tr><td colspan="5" class="muted">No pending orders for ${esc(pendingSnapshotDate)}.</td></tr>`
-  ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total — ${esc(pendingSnapshotDate)}</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
+    || `<tr><td colspan="5" class="muted">No pending orders currently.</td></tr>`
+  ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="2">Grand Total</td><td>${pendingTotalCount.toLocaleString()}</td><td>${pendingTotalOrderQty.toLocaleString()}</td><td>${pendingTotalQty.toLocaleString()}</td></tr>`;
 }
 
 let returnsDateHistoryExpanded = false;
