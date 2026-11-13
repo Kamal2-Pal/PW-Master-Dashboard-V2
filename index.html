@@ -357,7 +357,7 @@ function switchDashboardTab(btn){
   <section class="table-card" style="margin-bottom:16px">
     <div class="section-title">Total Open Orders — Order-wise Remarks</div>
     <div class="note">Orders not yet shipped/cancelled — Open &lt;48H, At Risk and Open &gt;48H combined.</div>
-    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>SLA Status</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaTotalOpenTbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Finance Category</th><th>Order Create Date</th><th>SLA Status</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaTotalOpenTbody"></tbody></table></div>
   </section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div><div class="table-pagination"><button id="slaPrevPage" type="button" onclick="changeSlaTablePage(-1)">Previous</button><span id="slaPageInfo">Page 1</span><button id="slaNextPage" type="button" onclick="changeSlaTablePage(1)">Next</button></div></section>
 </section>
@@ -1301,13 +1301,14 @@ function renderSla(rows){
     return `<tr>
       <td>${esc(orderId)}</td>
       <td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td>
+      <td>${esc(get(r,["finance_category","Finance Category","Category"]))}</td>
       <td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td>
       <td class="${cls}">${esc(r._sla)}</td>
       <td>${r._hours?r._hours.toFixed(1):"0.0"}</td>
       <td><input type="text" id="remark_input_totalopen_${orderId}" class="remark-input" value="${esc(currentRemark)}" placeholder="Enter WH remark..."></td>
       <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}','totalopen_')">Save</button></td>
     </tr>`;
-  }).join("")||"<tr><td colspan=7>No open orders currently.</td></tr>";
+  }).join("")||"<tr><td colspan=8>No open orders currently.</td></tr>";
 
   renderSlaTable(rows);
 }

@@ -86,6 +86,7 @@ DATE_FIELDS = ["Order create date", "OrderDate", "Order_Date", "Date"]
 SHIP_DATE_FIELDS = ["Actual_ShipDate", "Ship_Date", "Shipped_Date"]
 MANIFEST_DATE_FIELDS = ["Manifest Create Date", "Manifest_Create_Date", "ManifestCreateDate"]
 WAREHOUSE_FIELDS = ["FulfillmentLocationName", "Warehouse", "Location"]
+FINANCE_CATEGORY_FIELDS = ["finance_category", "Finance Category", "Category"]
 # Dashboard is scoped to a single warehouse only - kept in sync with
 # DASHBOARD_WAREHOUSE_FILTER in index.html.
 DASHBOARD_WAREHOUSE_FILTER = "Sikanderabad_FC1"
@@ -253,6 +254,7 @@ def build_open_orders(rows, remarks_map=None):
         open_orders.append({
             "order_no": order_id_of(r),
             "warehouse": norm(get(r, WAREHOUSE_FIELDS)),
+            "finance_category": norm(get(r, FINANCE_CATEGORY_FIELDS)),
             "status": norm(get(r, ["Status"])),
             "order_create_date": od,
             "sla": sla,
@@ -295,6 +297,7 @@ def build_email_html(open_orders, max_rows=300):
             f'<tr>'
             f'<td style="padding:6px 10px;border:1px solid #eee">{o["order_no"]}</td>'
             f'<td style="padding:6px 10px;border:1px solid #eee">{o["warehouse"]}</td>'
+            f'<td style="padding:6px 10px;border:1px solid #eee">{o["finance_category"]}</td>'
             f'<td style="padding:6px 10px;border:1px solid #eee">{date_str}</td>'
             f'<td style="padding:6px 10px;border:1px solid #eee;color:{color};font-weight:600">{o["sla"]}</td>'
             f'<td style="padding:6px 10px;border:1px solid #eee;text-align:right">{o["hours"]:.1f}</td>'
@@ -330,6 +333,7 @@ def build_email_html(open_orders, max_rows=300):
           <tr style="background:#f5f5f5">
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">Order No</th>
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">Warehouse</th>
+            <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">Finance Category</th>
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">Order Create Date</th>
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:left">SLA Status</th>
             <th style="padding:8px 10px;border:1px solid #ddd;text-align:right">Open Hours</th>
