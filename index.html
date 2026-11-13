@@ -69,6 +69,19 @@ select,input{min-width:140px;padding:9px;border:1px solid #ccd5df;border-radius:
 .dual-chart .pair .shipped{width:16px;background:#2d8cff;border-radius:3px 3px 0 0}
 .dual-chart .pair .returned{width:16px;background:#e0554f;border-radius:3px 3px 0 0}
 .dual-chart .month-group span{font-size:9px;color:#667686;white-space:nowrap}
+.trend-controls{display:flex;gap:12px;align-items:end;flex-wrap:wrap;background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:12px 14px;margin:0 0 16px}
+.trend-controls .field{min-width:150px}.trend-controls select{min-width:170px}
+.trend-controls .trend-hint{font-size:11px;color:#637181;margin-left:auto;padding-bottom:9px}
+.trend-chart{height:300px;display:flex;flex-direction:column;gap:7px}
+.trend-chart .legend{font-size:11px;color:#4f5d6a;padding:0 4px}
+.trend-chart .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:5px}
+.trend-chart .bars{flex:1;display:flex;align-items:flex-end;gap:12px;overflow-x:auto;padding:12px 6px 0;border-top:1px solid #eef1f4}
+.trend-chart .month-group{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:58px;height:100%;justify-content:flex-end}
+.trend-chart .month-group .single-bar{width:30px;min-height:2px;background:linear-gradient(180deg,#5aa8ff,#247ee5);border-radius:5px 5px 0 0;position:relative}
+.trend-chart .month-group .bar-value{font-size:9px;color:#415164;white-space:nowrap;font-weight:700}
+.trend-chart .month-group .month-label{font-size:10px;color:#667686;white-space:nowrap}
+.trend-kpi-sub{font-size:11px;color:#637181;margin-top:5px}
+.trend-kpi-positive{color:#187a43}.trend-kpi-negative{color:#c52f2f}
 .table-card{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px;margin-bottom:16px}
 .table-wrap{overflow:auto;max-height:520px;border:1px solid #edf0f3;border-radius:8px}
 table{border-collapse:collapse;width:100%;font-size:11px;min-width:900px}
@@ -255,10 +268,15 @@ function switchDashboardTab(btn){
   <div class="sla-head">
     <div><h2>Monthly Order Trends</h2><div class="note">Order create date ke basis par monthly performance. Ye view dashboard ke loaded order data par based hai.</div></div>
   </div>
+  <div class="trend-controls" aria-label="Monthly chart slicers">
+    <label class="field">Chart Window<select id="trendWindow" onchange="renderMonthlyTrends()"><option value="3">Last 3 Months</option><option value="6">Last 6 Months</option><option value="12">Last 12 Months</option><option value="all">All Available Months</option></select></label>
+    <label class="field">Measure<select id="trendMetric" onchange="renderMonthlyTrends()"><option value="orders">Unique Orders</option><option value="qty">Order Qty</option><option value="picked">Picked Qty</option><option value="shipped">Shipped Qty</option><option value="open">Open Qty</option></select></label>
+    <div class="trend-hint">Both charts use the same measure for a clear comparison.</div>
+  </div>
   <div class="kpis" id="monthlyCompareKpis"></div>
   <div class="grid">
-    <section class="card"><div class="section-title">Recent 3 Available Months</div><div class="note">Orders aur Order Qty ka month-wise comparison.</div><div id="recentMonthChart" class="dual-chart"></div></section>
-    <section class="card"><div class="section-title">All Months</div><div class="note">Complete loaded history ka monthly trend.</div><div id="allMonthChart" class="dual-chart"></div></section>
+    <section class="card"><div class="section-title" id="recentMonthTitle">Selected Window</div><div class="note" id="recentMonthNote">Monthly trend for the selected measure.</div><div id="recentMonthChart" class="trend-chart"></div></section>
+    <section class="card"><div class="section-title">All Available Months</div><div class="note" id="allMonthNote">Complete loaded history for the same measure.</div><div id="allMonthChart" class="trend-chart"></div></section>
   </div>
   <section class="table-card"><div class="section-title">Month-over-Month Comparison</div><div class="note" id="monthlyCompareNote"></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Unique Orders</th><th>Order Qty</th><th>Picked Qty</th><th>Shipped Qty</th><th>Open Qty</th><th>Orders Δ vs Previous</th><th>Qty Δ vs Previous</th></tr></thead><tbody id="monthlyTrendTbody"></tbody></table></div></section>
 </section>
@@ -1019,19 +1037,31 @@ function monthTrendRows(){
   });
   return Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month));
 }
-function renderMonthTrendChart(id,rows){
+function renderMonthTrendChart(id,rows,key,label){
   const el=$(id);if(!rows.length){el.innerHTML='<div class="note">No monthly data available.</div>';return;}
-  const max=Math.max(1,...rows.flatMap(x=>[x.orders,x.qty]));
-  el.innerHTML=`<div class="legend"><span><i style="background:#2d8cff"></i>Unique Orders</span><span><i style="background:#f57c00"></i>Order Qty</span></div><div class="bars">${rows.map(x=>`<div class="month-group"><div class="pair"><i class="shipped" title="Unique Orders: ${x.orders.toLocaleString()}" style="height:${Math.max(3,x.orders/max*180)}px"></i><i class="returned" title="Order Qty: ${x.qty.toLocaleString()}" style="height:${Math.max(3,x.qty/max*180)}px;background:#f57c00"></i></div><span>${esc(x.month)}</span></div>`).join("")}</div>`;
+  const max=Math.max(1,...rows.map(x=>num(x[key]))),color=key==="orders"?"#2d8cff":"#f57c00";
+  el.innerHTML=`<div class="legend"><i style="background:${color}"></i>${esc(label)}</div><div class="bars">${rows.map(x=>{
+    const value=num(x[key]),height=value?Math.max(4,value/max*190):0;
+    return `<div class="month-group" title="${esc(x.month)} · ${esc(label)}: ${value.toLocaleString()}"><b class="bar-value">${value.toLocaleString()}</b><i class="single-bar" style="height:${height}px;background:linear-gradient(180deg,${color}99,${color})"></i><span class="month-label">${esc(x.month)}</span></div>`;
+  }).join("")}</div>`;
 }
 function renderMonthlyTrends(){
   const rows=monthTrendRows(),latest=rows[rows.length-1],previous=rows[rows.length-2];
-  renderMonthTrendChart("recentMonthChart",rows.slice(-3));
-  renderMonthTrendChart("allMonthChart",rows);
+  const windowValue=$("trendWindow")?.value||"3",windowLabel=windowValue==="all"?"All Available Months":`Last ${windowValue} Months`;
+  const recentRows=windowValue==="all"?rows:rows.slice(-Math.max(1,Number(windowValue)||3));
+  const metricKey=$("trendMetric")?.value||"orders";
+  const metricLabel={orders:"Unique Orders",qty:"Order Qty",picked:"Picked Qty",shipped:"Shipped Qty",open:"Open Qty"}[metricKey]||"Unique Orders";
+  $("recentMonthTitle").textContent=windowLabel;
+  $("recentMonthNote").textContent=`${metricLabel} · ${recentRows.length} available month${recentRows.length===1?"":"s"}`;
+  $("allMonthNote").textContent=`${metricLabel} · Complete loaded history`;
+  renderMonthTrendChart("recentMonthChart",recentRows,metricKey,metricLabel);
+  renderMonthTrendChart("allMonthChart",rows,metricKey,metricLabel);
   const delta=(a,b,key)=>b?((a[key]-b[key])>=0?"+":"")+(a[key]-b[key]).toLocaleString():"—";
+  const pct=(a,b,key)=>!b||!b[key]?"—":`${((a[key]-b[key])/b[key]*100>=0?"+":"")}${((a[key]-b[key])/b[key]*100).toFixed(1)}%`;
+  const deltaCard=(label,value,percent)=>`<div class="kpi"><small>${esc(label)}</small><strong class="${value.startsWith("-")?"trend-kpi-negative":"trend-kpi-positive"}">${esc(value)}</strong><div class="trend-kpi-sub">${esc(percent)} vs previous month</div></div>`;
   if(latest){
-    const labels=["Latest Month",latest.month,"Previous Month",previous?previous.month:"No previous month","Orders Δ",delta(latest,previous,"orders"),"Order Qty Δ",delta(latest,previous,"qty")];
-    $("monthlyCompareKpis").innerHTML=labels.map((v,i)=>i%2===0?kpi(v,labels[i+1]):"").join("");
+    const previousHtml=previous?`<div class="kpi"><small>Previous Month</small><strong>${esc(previous.month)}</strong><div class="trend-kpi-sub">${previous.orders.toLocaleString()} orders · Qty ${previous.qty.toLocaleString()}</div></div>`:`<div class="kpi"><small>Previous Month</small><strong>—</strong><div class="trend-kpi-sub">No earlier month available</div></div>`;
+    $("monthlyCompareKpis").innerHTML=`<div class="kpi"><small>Latest Month</small><strong>${esc(latest.month)}</strong><div class="trend-kpi-sub">${latest.orders.toLocaleString()} orders · Qty ${latest.qty.toLocaleString()}</div></div>${previousHtml}${deltaCard("Orders Δ",delta(latest,previous,"orders"),pct(latest,previous,"orders"))}${deltaCard("Order Qty Δ",delta(latest,previous,"qty"),pct(latest,previous,"qty"))}`;
     $("monthlyCompareNote").textContent=previous?`${latest.month} compared with ${previous.month}. Positive values indicate an increase.`:`Only one month is available, so a month-over-month comparison is not yet possible.`;
   }else{$("monthlyCompareKpis").innerHTML="";$("monthlyCompareNote").textContent="No monthly data available.";}
   $("monthlyTrendTbody").innerHTML=rows.slice().reverse().map(x=>{
