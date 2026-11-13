@@ -785,6 +785,27 @@ function orderLevel(rows){
       ["Order Qty","Picked Qty","Shipped Qty","Open Qty"].forEach(k=>{
         if(get(r,[k])) x[k]=num(get(x,[k]))+num(get(r,[k]));
       });
+
+      // Keep the most advanced order status across all line items.
+      // A single order can have multiple SKU rows, and older logic kept
+      // the first row's status (for example Packed) even when another
+      // row already showed Shipped.
+      const statusRank={
+        "cancelled":0, "closed":1, "allocated":2, "confirmed":3,
+        "part allocated":4, "picked":5, "packed":6,
+        "partially shipped":7, "shipped":8, "shipped complete":9,
+        "delivered":10, "shipped & returned":11
+      };
+      const sx=norm(get(x,["Status"])).toLowerCase();
+      const sr=norm(get(r,["Status"])).toLowerCase();
+      if((statusRank[sr] ?? -1) > (statusRank[sx] ?? -1)) x["Status"]=get(r,["Status"]);
+
+      // If any line has the actual ship date, carry it to the order-level row.
+      const xShip=get(x,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"]);
+      const rShip=get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"]);
+      if(!norm(xShip) && norm(rShip)) {
+        x["Actual_ShipDate"]=rShip;
+      }
     }
   });
   return map.size > 0 ? [...map.values()] : rows;
