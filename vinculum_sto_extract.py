@@ -145,8 +145,79 @@ def set_sto_filters(driver):
       return true;
     """, start_text, end_text)
     if not set_range:
-        raise RuntimeError("STO Date range filter nahi mila.")
-    print(f"STO Date selected: {start_text} to {end_text}")
+        range_text = f"{start_text} - {end_text}"
+        date_input = None
+        try:
+            date_input = driver.find_element(By.ID, "gs_stoDate")
+            if not date_input.is_displayed():
+                date_input = None
+        except Exception:
+            pass
+
+        date_range_pattern = re.compile(
+            r"\d{1,2}/\d{1,2}/\d{4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{4}"
+        )
+        if date_input is None:
+            for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
+                try:
+                    if not candidate.is_displayed():
+                        continue
+                    meta = " ".join([
+                        candidate.get_attribute("id") or "",
+                        candidate.get_attribute("name") or "",
+                        candidate.get_attribute("placeholder") or "",
+                        candidate.get_attribute("aria-label") or "",
+                    ]).lower()
+                    value = candidate.get_attribute("value") or ""
+                    if "sto" in meta and "date" in meta or date_range_pattern.search(value):
+                        date_input = candidate
+                        break
+                except Exception:
+                    pass
+
+        if date_input is None:
+            visible_inputs = []
+            for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
+                try:
+                    if candidate.is_displayed():
+                        visible_inputs.append({
+                            "id": candidate.get_attribute("id"),
+                            "name": candidate.get_attribute("name"),
+                            "placeholder": candidate.get_attribute("placeholder"),
+                            "value": candidate.get_attribute("value"),
+                        })
+                except Exception:
+                    pass
+            raise RuntimeError(f"STO Date input nahi mila; visible inputs: {visible_inputs}")
+
+        try:
+            date_input.clear()
+            date_input.send_keys(range_text)
+            date_input.send_keys(Keys.ENTER)
+        except Exception:
+            driver.execute_script("""
+              const el = arguments[0], value = arguments[1];
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+              setter.call(el, value);
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+            """, date_input, range_text)
+        time.sleep(0.3)
+        actual_range = date_input.get_attribute("value") or ""
+        if start_text not in actual_range or end_text not in actual_range:
+            driver.execute_script("""
+              const el = arguments[0], value = arguments[1];
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+              setter.call(el, value);
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+            """, date_input, range_text)
+            actual_range = date_input.get_attribute("value") or ""
+            if start_text not in actual_range or end_text not in actual_range:
+                raise RuntimeError(f"STO Date range set nahi hua; field value: {actual_range!r}")
+        print(f"STO Date range field set: {actual_range}")
+    else:
+        print(f"STO Date selected: {start_text} to {end_text}")
 
     origin_select = None
     for select in driver.find_elements(By.TAG_NAME, "select"):
