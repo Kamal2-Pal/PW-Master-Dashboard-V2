@@ -128,67 +128,75 @@ def set_sto_filters(driver):
     start_text = start.strftime("%d/%m/%Y")
     end_text = today.strftime("%d/%m/%Y")
 
+    range_text = f"{start_text} - {end_text}"
+    date_input = None
+    try:
+        date_input = driver.find_element(By.ID, "gs_stoDate")
+        if not date_input.is_displayed():
+            date_input = None
+    except Exception:
+        pass
+
+    # Bind the date range to the STO Date grid column instead of whichever
+    # date picker happens to occur first in the page (there are other date
+    # columns such as Ship Date and Delivered Date).
+    if date_input is None:
+        for header in driver.find_elements(By.XPATH, "//th"):
+            if (header.text or "").strip().lower() not in {"sto date", "sto date range"}:
+                continue
+            try:
+                header_row = header.find_element(By.XPATH, "ancestor::tr[1]")
+                header_cells = header_row.find_elements(By.XPATH, "./th | ./td")
+                column_index = next(i for i, cell in enumerate(header_cells, start=1) if cell == header)
+                filter_row = header_row.find_element(By.XPATH, "following-sibling::tr[1]")
+                date_input = filter_row.find_element(By.XPATH, f"./td[{column_index}]//input")
+                if not date_input.is_displayed():
+                    date_input = None
+                else:
+                    print("   STO Date field header ke through mila.")
+                break
+            except Exception:
+                continue
+
+    date_range_pattern = re.compile(
+        r"\d{1,2}/\d{1,2}/\d{4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{4}"
+    )
+    if date_input is None:
+        for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
+            try:
+                if candidate.is_displayed() and date_range_pattern.search(candidate.get_attribute("value") or ""):
+                    date_input = candidate
+                    break
+            except Exception:
+                pass
+
+    if date_input is None:
+        visible_inputs = []
+        for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
+            try:
+                if candidate.is_displayed():
+                    visible_inputs.append({
+                        "id": candidate.get_attribute("id"),
+                        "name": candidate.get_attribute("name"),
+                        "placeholder": candidate.get_attribute("placeholder"),
+                        "value": candidate.get_attribute("value"),
+                    })
+            except Exception:
+                pass
+        raise RuntimeError(f"STO Date input nahi mila; visible inputs: {visible_inputs}")
+
+    # Use Vinculum's own date-range widget where it is attached; otherwise set
+    # the exact STO Date input directly, as the screen's range control allows.
     set_range = driver.execute_script("""
-      const inputs = Array.from(document.querySelectorAll('input'));
-      let target = document.querySelector('#gs_stoDate');
-      let picker = target && window.jQuery ? jQuery(target).data('daterangepicker') : null;
-      if (!picker && window.jQuery) {
-        for (const el of inputs) {
-          const p = jQuery(el).data('daterangepicker');
-          if (p) { target = el; picker = p; break; }
-        }
-      }
+      const target = arguments[0];
+      const picker = window.jQuery ? jQuery(target).data('daterangepicker') : null;
       if (!picker) return false;
-      picker.setStartDate(arguments[0]);
-      picker.setEndDate(arguments[1]);
+      picker.setStartDate(arguments[1]);
+      picker.setEndDate(arguments[2]);
       jQuery(target).trigger('apply.daterangepicker', picker);
       return true;
-    """, start_text, end_text)
+    """, date_input, start_text, end_text)
     if not set_range:
-        range_text = f"{start_text} - {end_text}"
-        date_input = None
-        try:
-            date_input = driver.find_element(By.ID, "gs_stoDate")
-            if not date_input.is_displayed():
-                date_input = None
-        except Exception:
-            pass
-
-        date_range_pattern = re.compile(
-            r"\d{1,2}/\d{1,2}/\d{4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{4}"
-        )
-        if date_input is None:
-            for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
-                try:
-                    if not candidate.is_displayed():
-                        continue
-                    meta = " ".join([
-                        candidate.get_attribute("id") or "",
-                        candidate.get_attribute("name") or "",
-                        candidate.get_attribute("placeholder") or "",
-                        candidate.get_attribute("aria-label") or "",
-                    ]).lower()
-                    value = candidate.get_attribute("value") or ""
-                    if "sto" in meta and "date" in meta or date_range_pattern.search(value):
-                        date_input = candidate
-                        break
-                except Exception:
-                    pass
-
-        if date_input is None:
-            visible_inputs = []
-            for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
-                try:
-                    if candidate.is_displayed():
-                        visible_inputs.append({
-                            "id": candidate.get_attribute("id"),
-                            "name": candidate.get_attribute("name"),
-                            "placeholder": candidate.get_attribute("placeholder"),
-                            "value": candidate.get_attribute("value"),
-                        })
-                except Exception:
-                    pass
-            raise RuntimeError(f"STO Date input nahi mila; visible inputs: {visible_inputs}")
 
         try:
             date_input.clear()
@@ -201,6 +209,7 @@ def set_sto_filters(driver):
               setter.call(el, value);
               el.dispatchEvent(new Event('input', {bubbles:true}));
               el.dispatchEvent(new Event('change', {bubbles:true}));
+              el.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true, key:'Enter'}));
             """, date_input, range_text)
         time.sleep(0.3)
         actual_range = date_input.get_attribute("value") or ""
@@ -211,6 +220,7 @@ def set_sto_filters(driver):
               setter.call(el, value);
               el.dispatchEvent(new Event('input', {bubbles:true}));
               el.dispatchEvent(new Event('change', {bubbles:true}));
+              el.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true, key:'Enter'}));
             """, date_input, range_text)
             actual_range = date_input.get_attribute("value") or ""
             if start_text not in actual_range or end_text not in actual_range:
@@ -361,18 +371,53 @@ def request_sto_detail_export(driver, wait):
 
 def switch_to_pending_report(driver):
     driver.switch_to.default_content()
-    for frame in driver.find_elements(By.TAG_NAME, "iframe"):
-        if not frame.is_displayed():
-            continue
+    def has_grid():
         try:
-            driver.switch_to.frame(frame)
             body = driver.find_element(By.TAG_NAME, "body").text.lower()
-            if "pending report" in body or "report id" in body:
-                return True
+            return ("pending report" in body or "report id" in body or "report names" in body) and bool(
+                driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
+            )
         except Exception:
-            pass
+            return False
+
+    deadline = time.time() + 20
+    while time.time() < deadline:
         driver.switch_to.default_content()
+        if has_grid():
+            return True
+        for frame in driver.find_elements(By.TAG_NAME, "iframe"):
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(frame)
+                if has_grid():
+                    return True
+                for nested in driver.find_elements(By.TAG_NAME, "iframe"):
+                    try:
+                        driver.switch_to.frame(nested)
+                        if has_grid():
+                            return True
+                        driver.switch_to.parent_frame()
+                    except Exception:
+                        try:
+                            driver.switch_to.parent_frame()
+                        except Exception:
+                            pass
+            except Exception:
+                driver.switch_to.default_content()
+        time.sleep(1)
+    driver.switch_to.default_content()
     return False
+
+
+def open_pending_report(driver):
+    driver.switch_to.default_content()
+    try:
+        driver.execute_script(
+            'openScreen("Pending Report", "pendingDisplay", "fa fa-fw fa-truck");'
+        )
+    except Exception as exc:
+        print(f"Pending Report openScreen warning: {exc}")
+    return switch_to_pending_report(driver)
 
 
 def parse_report_row(row):
@@ -384,7 +429,7 @@ def parse_report_row(row):
     return texts, report_id, status, joined
 
 
-def wait_for_sto_report(driver):
+def wait_for_sto_report(driver, before_ids):
     deadline = time.time() + 20 * 60
     matched = None
     while time.time() < deadline:
@@ -398,7 +443,11 @@ def wait_for_sto_report(driver):
             if report_id and "STO" in joined and "EXPORT" in joined:
                 sto_rows.append((row, report_id, status, texts))
         if sto_rows:
-            row, report_id, status, texts = max(sto_rows, key=lambda item: int(item[1]))
+            fresh_rows = [item for item in sto_rows if item[1] not in before_ids]
+            if not fresh_rows:
+                time.sleep(10)
+                continue
+            row, report_id, status, texts = max(fresh_rows, key=lambda item: int(item[1]))
             print(f"STO export report {report_id}: {status or 'processing'}")
             if status == "SUCCESS":
                 matched = (row, report_id)
@@ -429,7 +478,7 @@ def download_sto_report(driver, row, report_id):
             element.get_attribute("alt") or "",
             element.get_attribute("class") or "",
         ]).lower()
-        if "download" in meta:
+        if "downloadreport" in meta or "download" in meta:
             download_control = element
             break
     if not download_control:
@@ -456,8 +505,21 @@ def main():
     wait = WebDriverWait(driver, 40)
     try:
         login(driver, wait)
+        # Open Pending Report before requesting export, as the proven Returns
+        # extractor does, so the new STO report can be matched by its ID.
+        if not open_pending_report(driver):
+            raise RuntimeError("Export se pehle Pending Report screen/grid nahi mila; purane report ko naya samajhne se bachne ke liye export roka.")
+        before_ids = set()
+        if switch_to_pending_report(driver):
+            for row in driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow"):
+                _, report_id, _, joined = parse_report_row(row)
+                if report_id and "STO" in joined and "EXPORT" in joined:
+                    before_ids.add(report_id)
+        driver.switch_to.default_content()
         request_sto_detail_export(driver, wait)
-        row, report_id = wait_for_sto_report(driver)
+        if not open_pending_report(driver):
+            raise RuntimeError("STO export ke baad Pending Report screen/grid nahi mila.")
+        row, report_id = wait_for_sto_report(driver, before_ids)
         download_sto_report(driver, row, report_id)
     except Exception:
         raise
