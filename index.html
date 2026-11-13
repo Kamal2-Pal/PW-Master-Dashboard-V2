@@ -366,7 +366,7 @@ function switchDashboardTab(btn){
   <div class="sla-head">
     <div>
       <h2>B2B Reports</h2>
-      <div class="note">Shipped-order summary by Finance Category &amp; Transporter for a chosen Ship Date, plus a running Pending Orders summary by Finance Category.</div>
+      <div class="note">Sales dispatch summary by Finance Category &amp; Transporter, a separate STO dispatch summary, and a running Pending Orders summary.</div>
     </div>
   </div>
 
@@ -382,6 +382,16 @@ function switchDashboardTab(btn){
       </div>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Finance Category</th><th>Warehouse</th><th>Transporter</th><th>Distinct Order Count</th><th>Sum of Shipped Qty</th></tr></thead><tbody id="b2bShippedTbody"></tbody></table></div>
+  </section>
+
+  <section class="zoho-section">
+    <div class="zoho-summary-head">
+      <div>
+        <div class="section-title">STO Dispatch Summary</div>
+        <div class="note">Separate STO Order Enquiry export · STO Date: last 15 days · Origin: Sikanderabad_FC1 · Dispatch date uses Ship Date above.</div>
+      </div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Origin Site</th><th>Destination Site</th><th>Status</th><th>Distinct STO Count</th><th>Transfer Qty</th><th>Shipped Qty</th><th>Open Qty</th></tr></thead><tbody id="b2bStoTbody"></tbody></table></div>
   </section>
 
   <section class="zoho-section">
@@ -654,7 +664,7 @@ async function handleLogout() {
   document.getElementById('loginOverlay').style.display = 'flex';
 }
 
-let raw=[], current=[], orderRows=[], returnsRaw=[];
+let raw=[], current=[], orderRows=[], returnsRaw=[], stoRows=[];
 const TABLE_PAGE_SIZE=200;
 let orderTablePage=0,slaTablePage=0,slaFilteredRows=[];
 // orderLevel(raw) used to be recalculated ~9 times per render (once per filter
@@ -1400,6 +1410,33 @@ function renderB2BReports(){
     || `<tr><td colspan="5" class="muted">No orders shipped on ${esc(shipDateFilter)}.</td></tr>`
   ) + `<tr style="font-weight:800;background:#f7f9fb"><td colspan="3">Grand Total</td><td>${shippedTotalOrders.toLocaleString()}</td><td>${shippedTotalQty.toLocaleString()}</td></tr>`;
 
+  // --- STO dispatch is sourced from its own Transfer > STO Order Enquiry export ---
+  const stoOnDate=stoRows.filter(r=>
+    dateKey(get(r,["Ship Date","Actual_ShipDate"]))===shipDateFilter &&
+    norm(get(r,["Origin Site"])).toLowerCase()==="sikanderabad_fc1"
+  );
+  const stoGroups=new Map();
+  stoOnDate.forEach(r=>{
+    const origin=norm(get(r,["Origin Site"]))||"(Blank)";
+    const destination=norm(get(r,["Destination Site"]))||"(Blank)";
+    const status=norm(get(r,["Status"]))||"(Blank)";
+    const key=origin+"||"+destination+"||"+status;
+    if(!stoGroups.has(key)) stoGroups.set(key,{origin,destination,status,stos:new Set(),transferQty:0,shippedQty:0,openQty:0});
+    const g=stoGroups.get(key);
+    const id=norm(get(r,["STO No","STO Number"]));
+    if(id) g.stos.add(id);
+    g.transferQty+=num(get(r,["Transfer Qty","STO Qty"]));
+    g.shippedQty+=num(get(r,["Shipped Qty"]));
+    g.openQty+=num(get(r,["Open Qty"]));
+  });
+  const stoSummary=[...stoGroups.values()].sort((a,b)=>a.destination.localeCompare(b.destination)||a.status.localeCompare(b.status));
+  const stoTotalIds=new Set(stoOnDate.map(r=>norm(get(r,["STO No","STO Number"]))).filter(Boolean));
+  const stoTotals=stoSummary.reduce((a,g)=>({transferQty:a.transferQty+g.transferQty,shippedQty:a.shippedQty+g.shippedQty,openQty:a.openQty+g.openQty}),{transferQty:0,shippedQty:0,openQty:0});
+  $("b2bStoTbody").innerHTML=(
+    stoSummary.map(g=>`<tr><td>${esc(g.origin)}</td><td>${esc(g.destination)}</td><td>${esc(g.status)}</td><td>${g.stos.size.toLocaleString()}</td><td>${g.transferQty.toLocaleString()}</td><td>${g.shippedQty.toLocaleString()}</td><td>${g.openQty.toLocaleString()}</td></tr>`).join("")
+    || `<tr><td colspan="7" class="muted">${stoRows.length?`No STO dispatches with Ship Date ${esc(shipDateFilter)}.`:"STO export is not loaded yet."}</td></tr>`
+  )+`<tr style="font-weight:800;background:#f7f9fb"><td colspan="3">Grand Total</td><td>${stoTotalIds.size.toLocaleString()}</td><td>${stoTotals.transferQty.toLocaleString()}</td><td>${stoTotals.shippedQty.toLocaleString()}</td><td>${stoTotals.openQty.toLocaleString()}</td></tr>`;
+
   // --- Pending Orders Summary: By Finance Category & Warehouse (current snapshot, not date-filtered) ---
   const pendingRows=orderRows.filter(r=>{
     const status=norm(get(r,["Status"])).toLowerCase();
@@ -2047,6 +2084,13 @@ async function performDashboardLoad(){
   }
 
   raw = mergeAndDeduplicate(historyData, currentMonthData);
+
+  stoRows = [];
+  try {
+    stoRows = await fetchAndParseWithCache("sto-data.xlsx") || [];
+  } catch (err) {
+    console.warn("sto-data.xlsx fetch failed", err);
+  }
 
   // Returns data: current month from returns.xlsx + historical files from
   // "Returns History/" using the user's naming pattern:
