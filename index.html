@@ -190,6 +190,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 
 <div class="tabs">
   <button type="button" class="tab active" data-tab="ordersTab" onclick="switchDashboardTab(this)">Order Fulfillment</button>
+  <button type="button" class="tab" data-tab="monthlyTab" onclick="switchDashboardTab(this)">Monthly Trends</button>
   <button type="button" class="tab" data-tab="zohoTab" onclick="switchDashboardTab(this)">Zoho Docs</button>
   <button type="button" class="tab" data-tab="slaTab" onclick="switchDashboardTab(this)">48H Ship SLA</button>
   <button type="button" class="tab" data-tab="b2bTab" onclick="switchDashboardTab(this)">B2B_Reports</button>
@@ -248,6 +249,18 @@ function switchDashboardTab(btn){
     <section class="card"><div class="section-title">Day-wise Orders</div><div id="dayChart" class="chart"></div></section>
   </div>
   <section class="table-card"><div class="section-title">Order Details</div><div class="note" id="rowNote"></div><div class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div></section>
+</section>
+
+<section id="monthlyTab" class="tab-panel">
+  <div class="sla-head">
+    <div><h2>Monthly Order Trends</h2><div class="note">Order create date ke basis par monthly performance. Ye view dashboard ke loaded order data par based hai.</div></div>
+  </div>
+  <div class="kpis" id="monthlyCompareKpis"></div>
+  <div class="grid">
+    <section class="card"><div class="section-title">Recent 3 Available Months</div><div class="note">Orders aur Order Qty ka month-wise comparison.</div><div id="recentMonthChart" class="dual-chart"></div></section>
+    <section class="card"><div class="section-title">All Months</div><div class="note">Complete loaded history ka monthly trend.</div><div id="allMonthChart" class="dual-chart"></div></section>
+  </div>
+  <section class="table-card"><div class="section-title">Month-over-Month Comparison</div><div class="note" id="monthlyCompareNote"></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Unique Orders</th><th>Order Qty</th><th>Picked Qty</th><th>Shipped Qty</th><th>Open Qty</th><th>Orders Δ vs Previous</th><th>Qty Δ vs Previous</th></tr></thead><tbody id="monthlyTrendTbody"></tbody></table></div></section>
 </section>
 
 <section id="zohoTab" class="tab-panel">
@@ -785,27 +798,6 @@ function orderLevel(rows){
       ["Order Qty","Picked Qty","Shipped Qty","Open Qty"].forEach(k=>{
         if(get(r,[k])) x[k]=num(get(x,[k]))+num(get(r,[k]));
       });
-
-      // Keep the most advanced order status across all line items.
-      // A single order can have multiple SKU rows, and older logic kept
-      // the first row's status (for example Packed) even when another
-      // row already showed Shipped.
-      const statusRank={
-        "cancelled":0, "closed":1, "allocated":2, "confirmed":3,
-        "part allocated":4, "picked":5, "packed":6,
-        "partially shipped":7, "shipped":8, "shipped complete":9,
-        "delivered":10, "shipped & returned":11
-      };
-      const sx=norm(get(x,["Status"])).toLowerCase();
-      const sr=norm(get(r,["Status"])).toLowerCase();
-      if((statusRank[sr] ?? -1) > (statusRank[sx] ?? -1)) x["Status"]=get(r,["Status"]);
-
-      // If any line has the actual ship date, carry it to the order-level row.
-      const xShip=get(x,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"]);
-      const rShip=get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"]);
-      if(!norm(xShip) && norm(rShip)) {
-        x["Actual_ShipDate"]=rShip;
-      }
     }
   });
   return map.size > 0 ? [...map.values()] : rows;
@@ -1013,6 +1005,37 @@ function counts(rows,key){const m={};rows.forEach(r=>{const v=norm(get(r,[key]))
 function hbar(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="hbar"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${v/mx*100}%"></div></div><b>${v.toLocaleString()}</b></div>`).join("");}
 function miniChart(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="bar"><em>${v.toLocaleString()}</em><i style="height:${Math.max(3,v/mx*190)}px"></i><span>${esc(k.slice(5))}</span></div>`).join("");}
 
+function monthTrendRows(){
+  const byMonth={};
+  orderRows.forEach(r=>{
+    const month=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7);
+    if(!/^\d{4}-\d{2}$/.test(month))return;
+    if(!byMonth[month])byMonth[month]={month,orders:0,qty:0,picked:0,shipped:0,open:0};
+    const x=byMonth[month];x.orders++;x.qty+=num(get(r,["Order Qty","Qty"]));x.picked+=num(get(r,["Picked Qty"]));x.shipped+=num(get(r,["Shipped Qty"]));x.open+=num(get(r,["Open Qty"]));
+  });
+  return Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month));
+}
+function renderMonthTrendChart(id,rows){
+  const el=$(id);if(!rows.length){el.innerHTML='<div class="note">No monthly data available.</div>';return;}
+  const max=Math.max(1,...rows.flatMap(x=>[x.orders,x.qty]));
+  el.innerHTML=`<div class="legend"><span><i style="background:#2d8cff"></i>Unique Orders</span><span><i style="background:#f57c00"></i>Order Qty</span></div><div class="bars">${rows.map(x=>`<div class="month-group"><div class="pair"><i class="shipped" title="Unique Orders: ${x.orders.toLocaleString()}" style="height:${Math.max(3,x.orders/max*180)}px"></i><i class="returned" title="Order Qty: ${x.qty.toLocaleString()}" style="height:${Math.max(3,x.qty/max*180)}px;background:#f57c00"></i></div><span>${esc(x.month)}</span></div>`).join("")}</div>`;
+}
+function renderMonthlyTrends(){
+  const rows=monthTrendRows(),latest=rows[rows.length-1],previous=rows[rows.length-2];
+  renderMonthTrendChart("recentMonthChart",rows.slice(-3));
+  renderMonthTrendChart("allMonthChart",rows);
+  const delta=(a,b,key)=>b?((a[key]-b[key])>=0?"+":"")+(a[key]-b[key]).toLocaleString():"—";
+  if(latest){
+    const labels=["Latest Month",latest.month,"Previous Month",previous?previous.month:"No previous month","Orders Δ",delta(latest,previous,"orders"),"Order Qty Δ",delta(latest,previous,"qty")];
+    $("monthlyCompareKpis").innerHTML=labels.map((v,i)=>i%2===0?kpi(v,labels[i+1]):"").join("");
+    $("monthlyCompareNote").textContent=previous?`${latest.month} compared with ${previous.month}. Positive values indicate an increase.`:`Only one month is available, so a month-over-month comparison is not yet possible.`;
+  }else{$("monthlyCompareKpis").innerHTML="";$("monthlyCompareNote").textContent="No monthly data available.";}
+  $("monthlyTrendTbody").innerHTML=rows.slice().reverse().map(x=>{
+    const prev=rows[rows.findIndex(y=>y.month===x.month)-1];
+    return `<tr><td>${esc(x.month)}</td><td>${x.orders.toLocaleString()}</td><td>${x.qty.toLocaleString()}</td><td>${x.picked.toLocaleString()}</td><td>${x.shipped.toLocaleString()}</td><td>${x.open.toLocaleString()}</td><td>${esc(delta(x,prev,"orders"))}</td><td>${esc(delta(x,prev,"qty"))}</td></tr>`;
+  }).join("")||'<tr><td colspan="8" class="muted">No monthly data available.</td></tr>';
+}
+
 function populateFilters(){
   fill("warehouse",orderRows.map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");
   fill("channel",orderRows.map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");
@@ -1029,6 +1052,7 @@ function populateMonths(){
 
 function renderOrders(){
   markSecondaryTabsDirty();
+  renderMonthlyTrends();
   current=filteredRows();
   const total=current.length,qty=current.reduce((s,r)=>s+num(get(r,["Order Qty","Qty"])),0),picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;
   $("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");
@@ -1084,7 +1108,7 @@ function renderOrders(){
   $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
 }
 
-const SHIPPED_STATUSES=new Set(["shipped","shipped complete","partially shipped","delivered","shipped & returned"]);
+const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivered","shipped & returned"]);
 
 // SLA and Zoho tab content used to be recomputed constantly in the background
 // (on every keystroke in search, every filter change, every render) even when
@@ -1122,19 +1146,20 @@ function buildSlaRows(){
     if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};
     const due=new Date(od.getTime()+48*3600000);
     const isShippedStatus=SHIPPED_STATUSES.has(status);
-    // If Actual_ShipDate is available, use it for the 48H calculation.
+    // Status already says shipped/delivered but Actual_ShipDate is blank in the export -
+    // fall back to Manifest Create Date so a genuinely shipped order isn't shown as "Open".
+    if(!sd && isShippedStatus){
+      sd=dateVal(get(r,["Manifest Create Date","Manifest_Create_Date","ManifestCreateDate"]));
+    }
     if(sd){
       const h=(sd-od)/3600000;
       const st=h<=48?"Within SLA":"Breached";
       return {...r,_sla:st,_hours:h,_due:due,_slaMilestone:"Actual_ShipDate"};
     }
-    // If Actual_ShipDate is blank, refer to the order Status. A shipped/delivered
-    // status means the order is no longer open, even though the ship timestamp
-    // is missing from the export. SLA hours cannot be calculated without a
-    // reliable ship timestamp, so keep hours blank rather than using a different
-    // date such as Manifest Create Date.
+    // No usable ship date at all. If the status itself says shipped/delivered,
+    // don't count it as still-open - just show it as Shipped complete with unknown hours.
     if(isShippedStatus){
-      return {...r,_sla:"Shipped complete",_hours:null,_due:due,_slaMilestone:"Status = shipped (Actual_ShipDate missing)"};
+      return {...r,_sla:"Shipped complete",_hours:null,_due:due,_slaMilestone:"Shipped (date missing)"};
     }
     const h=(now-od)/3600000;
     const st=h>48?"Open >48H":(h>=42?"At Risk":"Open <48H");
