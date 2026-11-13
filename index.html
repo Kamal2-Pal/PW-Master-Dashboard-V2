@@ -1063,7 +1063,7 @@ function renderOrders(){
   $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
 }
 
-const SHIPPED_STATUSES=new Set(["shipped complete","partially shipped","delivered","shipped & returned"]);
+const SHIPPED_STATUSES=new Set(["shipped","shipped complete","partially shipped","delivered","shipped & returned"]);
 
 // SLA and Zoho tab content used to be recomputed constantly in the background
 // (on every keystroke in search, every filter change, every render) even when
@@ -1101,20 +1101,19 @@ function buildSlaRows(){
     if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};
     const due=new Date(od.getTime()+48*3600000);
     const isShippedStatus=SHIPPED_STATUSES.has(status);
-    // Status already says shipped/delivered but Actual_ShipDate is blank in the export -
-    // fall back to Manifest Create Date so a genuinely shipped order isn't shown as "Open".
-    if(!sd && isShippedStatus){
-      sd=dateVal(get(r,["Manifest Create Date","Manifest_Create_Date","ManifestCreateDate"]));
-    }
+    // If Actual_ShipDate is available, use it for the 48H calculation.
     if(sd){
       const h=(sd-od)/3600000;
       const st=h<=48?"Within SLA":"Breached";
       return {...r,_sla:st,_hours:h,_due:due,_slaMilestone:"Actual_ShipDate"};
     }
-    // No usable ship date at all. If the status itself says shipped/delivered,
-    // don't count it as still-open - just show it as Shipped complete with unknown hours.
+    // If Actual_ShipDate is blank, refer to the order Status. A shipped/delivered
+    // status means the order is no longer open, even though the ship timestamp
+    // is missing from the export. SLA hours cannot be calculated without a
+    // reliable ship timestamp, so keep hours blank rather than using a different
+    // date such as Manifest Create Date.
     if(isShippedStatus){
-      return {...r,_sla:"Shipped complete",_hours:null,_due:due,_slaMilestone:"Shipped (date missing)"};
+      return {...r,_sla:"Shipped complete",_hours:null,_due:due,_slaMilestone:"Status = shipped (Actual_ShipDate missing)"};
     }
     const h=(now-od)/3600000;
     const st=h>48?"Open >48H":(h>=42?"At Risk":"Open <48H");
