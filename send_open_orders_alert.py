@@ -200,13 +200,34 @@ def merge_and_dedup(history_rows, current_rows):
 
 
 def order_level(rows):
-    """Mirrors orderLevel(): one row per unique Order No (first occurrence)."""
+    """Mirrors orderLevel(): one row per order, with line quantities summed."""
     seen = {}
     for r in rows:
         oid = order_id_of(r)
         if oid and oid not in seen:
-            seen[oid] = r
-    return list(seen.values())
+            seen[oid] = dict(r)
+        elif oid:
+            order = seen[oid]
+            for field in ("Order Qty", "Picked Qty", "Shipped Qty", "Open Qty"):
+                value = get(r, [field])
+                if value not in (None, ""):
+                    try:
+                        order[field] = float(get(order, [field]) or 0) + float(value)
+                    except (TypeError, ValueError):
+                        pass
+
+    orders = list(seen.values())
+    for order in orders:
+        status = norm(get(order, ["Status"])).lower()
+        try:
+            order_qty = float(get(order, ["Order Qty", "Qty"]) or 0)
+            shipped_qty = float(get(order, ["Shipped Qty"]) or 0)
+            open_qty = float(get(order, ["Open Qty"]) or 0)
+        except (TypeError, ValueError):
+            continue
+        if status == "packed" and order_qty > 0 and shipped_qty >= order_qty and open_qty <= 0:
+            order["Status"] = "Shipped Complete"
+    return orders
 
 
 def build_open_orders(rows, remarks_map=None):

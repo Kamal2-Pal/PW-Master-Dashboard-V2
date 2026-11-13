@@ -822,7 +822,20 @@ function orderLevel(rows){
       });
     }
   });
-  return map.size > 0 ? [...map.values()] : rows;
+  const orders=map.size > 0 ? [...map.values()] : rows;
+  // Some archived Vinculum rows keep Status="Packed" even when the whole
+  // order has shipped. Use the line quantities as the completion signal so
+  // these orders don't remain marked Packed/open after aging out of data.xlsx.
+  orders.forEach(order=>{
+    const status=norm(get(order,["Status"])).toLowerCase();
+    const orderQty=num(get(order,["Order Qty","Qty"]));
+    const shippedQty=num(get(order,["Shipped Qty"]));
+    const openQty=num(get(order,["Open Qty"]));
+    if(status==="packed"&&orderQty>0&&shippedQty>=orderQty&&openQty<=0){
+      order.Status="Shipped Complete";
+    }
+  });
+  return orders;
 }
 
 function mergeAndDeduplicate(historyRows, currentRows) {
