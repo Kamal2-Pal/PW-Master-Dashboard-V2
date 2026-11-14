@@ -1,404 +1,107 @@
-"""Export the recent Sikanderabad STO dispatch report from Vinculum.
-
-The existing order enquiry export remains separate. This script runs after it
-in GitHub Actions and writes sto-data.xlsx for the dashboard's STO summary.
-"""
-import glob
-import json
-import os
-import re
-import shutil
-import time
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
-
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-from vinculum_extract_final import (
-    LOGIN_URL,
-    USERNAME,
-    PASSWORD,
-    DOWNLOAD_FOLDER,
-    build_driver,
-    wait_for_download,
-    accept_existing_session_alert,
-)
-
-OUTPUT_FILE = os.path.abspath("sto-data.xlsx")
-META_FILE = os.path.abspath("sto-meta.json")
-ORIGIN_SITE = "Sikanderabad_FC1"
-STATUS_WORDS = {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}
-
-
-def is_sto_report(joined_text):
-    """Report name observed in Vinculum is generateDetailSTO..., not ...EXPORT."""
-    return any(marker in joined_text for marker in (
-        "GENERATEDETAILST", "STOORDERENQUIRY", "STOEXPORT",
-    ))
-
-
-def first_visible(driver, selectors):
-    for by, selector in selectors:
+def _modal_in_current_context(driver):
+    """Current frame me export modal dhundhein; (modal, inner_iframe) ya (None, None)."""
+    for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
         try:
-            for element in driver.find_elements(by, selector):
-                if element.is_displayed() and element.is_enabled():
-                    return element
-        except Exception:
-            pass
-    return None
-
-
-def login(driver, wait):
-    driver.get(LOGIN_URL)
-    username_selectors = [
-        (By.ID, "username"), (By.NAME, "username"),
-        (By.ID, "j_username"), (By.NAME, "j_username"),
-        (By.CSS_SELECTOR, "input[type='text']"),
-        (By.CSS_SELECTOR, "input[type='email']"),
-    ]
-    wait.until(lambda d:
-        first_visible(d, username_selectors) is not None
-        or "selcompanylocationbs.action" in d.current_url.lower()
-    )
-    user = first_visible(driver, username_selectors)
-    password = first_visible(driver, [
-        (By.ID, "password"), (By.NAME, "password"),
-        (By.ID, "j_password"), (By.NAME, "j_password"),
-        (By.CSS_SELECTOR, "input[type='password']"),
-    ])
-    if user and password:
-        user.clear()
-        user.send_keys(USERNAME)
-        password.clear()
-        password.send_keys(PASSWORD)
-        button = first_visible(driver, [
-            (By.ID, "loginButton"), (By.ID, "login"),
-            (By.NAME, "login"), (By.CSS_SELECTOR, "button[type='submit']"),
-            (By.CSS_SELECTOR, "input[type='submit']"),
-        ])
-        if not button:
-            raise RuntimeError("Vinculum login button nahi mila.")
-        driver.execute_script("arguments[0].click();", button)
-
-    accept_existing_session_alert(driver)
-    deadline = time.time() + 40
-    while time.time() < deadline:
-        try:
-            alert = driver.switch_to.alert
-            alert.accept()
-        except Exception:
-            pass
-        try:
-            if "selcompanylocationbs.action" in driver.current_url.lower():
-                return
-        except Exception:
-            pass
-        time.sleep(1)
-    raise RuntimeError("Vinculum login ke baad dashboard page nahi mila.")
-
-
-def switch_to_sto_frame(driver, wait):
-    deadline = time.time() + 30
-
-    def has_sto_filter_controls():
-        """Only accept the frame that owns the STO filter grid, not its shell."""
-        try:
-            headers = [
-                re.sub(r"\s+", " ", (el.text or "").strip().lower())
-                for el in driver.find_elements(By.XPATH, "//th")
-            ]
-            has_date = any(value in {"sto date", "sto date range"} for value in headers)
-            has_origin = any(value == "origin site" for value in headers)
-            return has_date and has_origin and bool(
-                driver.find_elements(By.CSS_SELECTOR, "input, select")
-            )
-        except Exception:
-            return False
-
-    def find_in_context(depth=0):
-        if has_sto_filter_controls():
-            return True
-        if depth >= 3:
-            return False
-        try:
-            frames = driver.find_elements(By.TAG_NAME, "iframe")
-        except Exception:
-            frames = []
-        for frame in frames:
-            entered_frame = False
-            try:
-                # Vinculum nests the enquiry grid under a shell iframe on some
-                # sessions. Search all child frames, including hidden shells.
-                driver.switch_to.frame(frame)
-                entered_frame = True
-                if find_in_context(depth + 1):
-                    return True  # leave Selenium in the frame with the filters
-            except Exception:
-                pass
-            if entered_frame:
-                try:
-                    driver.switch_to.parent_frame()
-                except Exception:
-                    driver.switch_to.default_content()
-        return False
-
-    while time.time() < deadline:
-        driver.switch_to.default_content()
-        if find_in_context():
-            print("STO Date aur Origin Site filters wala iframe mil gaya.")
-            return
-        time.sleep(1)
-    driver.switch_to.default_content()
-    frame_debug = []
-    try:
-        for frame in driver.find_elements(By.TAG_NAME, "iframe"):
-            frame_debug.append({
-                "src": frame.get_attribute("src"),
-                "title": frame.get_attribute("title"),
-                "name": frame.get_attribute("name"),
-            })
-    except Exception:
-        pass
-    raise RuntimeError(
-        "STO Date/Origin Site filter grid iframe nahi mila; "
-        f"top-level iframes: {frame_debug}"
-    )
-
-
-def set_sto_filters(driver):
-    today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
-    start = today - timedelta(days=14)
-    start_text = start.strftime("%d/%m/%Y")
-    end_text = today.strftime("%d/%m/%Y")
-
-    range_text = f"{start_text} - {end_text}"
-    date_input = None
-    try:
-        date_input = driver.find_element(By.ID, "gs_stoDate")
-        if not date_input.is_displayed():
-            date_input = None
-    except Exception:
-        pass
-
-    # Bind the date range to the STO Date grid column instead of whichever
-    # date picker happens to occur first in the page (there are other date
-    # columns such as Ship Date and Delivered Date).
-    if date_input is None:
-        for header in driver.find_elements(By.XPATH, "//th"):
-            if (header.text or "").strip().lower() not in {"sto date", "sto date range"}:
+            if not candidate.is_displayed():
                 continue
-            try:
-                header_row = header.find_element(By.XPATH, "ancestor::tr[1]")
-                header_cells = header_row.find_elements(By.XPATH, "./th | ./td")
-                column_index = next(i for i, cell in enumerate(header_cells, start=1) if cell == header)
-                filter_row = header_row.find_element(By.XPATH, "following-sibling::tr[1]")
-                date_input = filter_row.find_element(By.XPATH, f"./td[{column_index}]//input")
-                if not date_input.is_displayed():
-                    date_input = None
-                else:
-                    print("   STO Date field header ke through mila.")
-                break
-            except Exception:
-                continue
-
-    date_range_pattern = re.compile(
-        r"\d{1,2}/\d{1,2}/\d{4}\s*[-–]\s*\d{1,2}/\d{1,2}/\d{4}"
-    )
-    if date_input is None:
-        for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
-            try:
-                if candidate.is_displayed() and date_range_pattern.search(candidate.get_attribute("value") or ""):
-                    date_input = candidate
-                    break
-            except Exception:
-                pass
-
-    if date_input is None:
-        visible_inputs = []
-        for candidate in driver.find_elements(By.CSS_SELECTOR, "input"):
-            try:
-                if candidate.is_displayed():
-                    visible_inputs.append({
-                        "id": candidate.get_attribute("id"),
-                        "name": candidate.get_attribute("name"),
-                        "placeholder": candidate.get_attribute("placeholder"),
-                        "value": candidate.get_attribute("value"),
-                    })
-            except Exception:
-                pass
-        raise RuntimeError(f"STO Date input nahi mila; visible inputs: {visible_inputs}")
-
-    # Use Vinculum's own date-range widget where it is attached; otherwise set
-    # the exact STO Date input directly, as the screen's range control allows.
-    set_range = driver.execute_script("""
-      const target = arguments[0];
-      const picker = window.jQuery ? jQuery(target).data('daterangepicker') : null;
-      if (!picker) return false;
-      picker.setStartDate(arguments[1]);
-      picker.setEndDate(arguments[2]);
-      jQuery(target).trigger('apply.daterangepicker', picker);
-      return true;
-    """, date_input, start_text, end_text)
-    if not set_range:
-
-        try:
-            date_input.clear()
-            date_input.send_keys(range_text)
-            date_input.send_keys(Keys.ENTER)
         except Exception:
-            driver.execute_script("""
-              const el = arguments[0], value = arguments[1];
-              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-              setter.call(el, value);
-              el.dispatchEvent(new Event('input', {bubbles:true}));
-              el.dispatchEvent(new Event('change', {bubbles:true}));
-              el.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true, key:'Enter'}));
-            """, date_input, range_text)
-        time.sleep(0.3)
-        actual_range = date_input.get_attribute("value") or ""
-        if start_text not in actual_range or end_text not in actual_range:
-            driver.execute_script("""
-              const el = arguments[0], value = arguments[1];
-              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-              setter.call(el, value);
-              el.dispatchEvent(new Event('input', {bubbles:true}));
-              el.dispatchEvent(new Event('change', {bubbles:true}));
-              el.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true, key:'Enter'}));
-            """, date_input, range_text)
-            actual_range = date_input.get_attribute("value") or ""
-            if start_text not in actual_range or end_text not in actual_range:
-                raise RuntimeError(f"STO Date range set nahi hua; field value: {actual_range!r}")
-        print(f"STO Date range field set: {actual_range}")
-    else:
-        print(f"STO Date selected: {start_text} to {end_text}")
-
-    origin_select = None
-    # The inspected page uses Select2: its visible widget is
-    # #select2-gs_fromSiteLoc-container and its backing <select> is
-    # #gs_fromSiteLoc (which may be hidden by Select2).
-    try:
-        origin_select = driver.find_element(By.ID, "gs_fromSiteLoc")
-    except Exception:
-        pass
-    for select in driver.find_elements(By.TAG_NAME, "select"):
-        if origin_select is not None:
-            break
-        if not select.is_displayed():
             continue
+        text = (candidate.text or "").lower()
+        inner = None
         try:
-            selector_meta = " ".join([
-                select.get_attribute("id") or "",
-                select.get_attribute("name") or "",
-                select.get_attribute("aria-label") or "",
-                select.get_attribute("title") or "",
-            ]).lower()
-            # Do not mistake Destination Site's dropdown for Origin Site just
-            # because it also contains Sikanderabad as a possible destination.
-            if "origin" not in selector_meta:
+            inner = candidate.find_element(By.TAG_NAME, "iframe")
+        except Exception:
+            inner = None
+        # Purana tight match ("select field for export") + relaxed match:
+        # koi bhi visible modal jisme export/field likha ho ya jo iframe rakhta ho.
+        if inner is not None or "export" in text or "field" in text:
+            return candidate, inner
+    for fr in driver.find_elements(By.TAG_NAME, "iframe"):
+        try:
+            if not fr.is_displayed():
                 continue
-            options = select.find_elements(By.TAG_NAME, "option")
-            if any(
-                re.sub(r"[^a-z0-9]", "", o.text.lower()).endswith(
-                    re.sub(r"[^a-z0-9]", "", ORIGIN_SITE.lower())
-                )
-                for o in options
-            ):
-                origin_select = select
-                break
         except Exception:
-            pass
-    selected = False
-    if origin_select is not None:
-        selected = driver.execute_script("""
-          const s = arguments[0], wanted = arguments[1].toLowerCase().replace(/[^a-z0-9]/g, '');
-          const o = Array.from(s.options).find(x => x.text.trim().toLowerCase().replace(/[^a-z0-9]/g, '').endsWith(wanted));
-          if (!o) return false;
-          s.value = o.value;
-          o.selected = true;
-          s.dispatchEvent(new Event('input', {bubbles:true}));
-          s.dispatchEvent(new Event('change', {bubbles:true}));
-          return Array.from(s.selectedOptions).some(x => x.text.trim().toLowerCase().replace(/[^a-z0-9]/g, '').endsWith(wanted));
-        """, origin_select, ORIGIN_SITE)
+            continue
+        meta = " ".join([
+            fr.get_attribute("src") or "",
+            fr.get_attribute("id") or "",
+            fr.get_attribute("name") or "",
+        ]).lower()
+        if "export" in meta or "field" in meta:
+            return fr, fr
+    try:
+        cb = driver.find_element(By.ID, "cb_dynamicFieldGrid")
+        if cb.is_displayed():
+            return cb, None
+    except Exception:
+        pass
+    return None, None
 
-    if not selected:
+
+def _enter_frame_path(driver, path):
+    driver.switch_to.default_content()
+    for idx in path:
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        if idx >= len(frames):
+            raise IndexError(f"frame index {idx} out of range")
+        driver.switch_to.frame(frames[idx])
+
+
+def find_export_modal(driver, timeout=90):
+    """Top + 2 levels ke iframes me export modal poll karein, alerts clear karte hue."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
         try:
-            container = driver.find_element(By.ID, "select2-gs_fromSiteLoc-container")
-            driver.execute_script("arguments[0].click();", container)
-            time.sleep(0.3)
-            search_box = first_visible(driver, [
-                (By.CSS_SELECTOR, "input.select2-search__field"),
-            ])
-            if search_box:
-                search_box.send_keys(ORIGIN_SITE)
-                time.sleep(0.5)
-            for option in driver.find_elements(By.CSS_SELECTOR, ".select2-results__option"):
-                text = re.sub(r"[^a-z0-9]", "", (option.text or "").lower())
-                if option.is_displayed() and text.endswith("sikanderabadfc1"):
-                    driver.execute_script("arguments[0].click();", option)
-                    time.sleep(0.3)
-                    value = (driver.find_element(By.ID, "select2-gs_fromSiteLoc-container").text or "")
-                    if re.sub(r"[^a-z0-9]", "", value.lower()).endswith("sikanderabadfc1"):
-                        selected = True
-                    break
+            driver.switch_to.alert.accept()
         except Exception:
             pass
+        paths = [[]]
+        try:
+            driver.switch_to.default_content()
+            top_count = len(driver.find_elements(By.TAG_NAME, "iframe"))
+        except Exception:
+            top_count = 0
+        for i in range(top_count):
+            paths.append([i])
+            try:
+                _enter_frame_path(driver, [i])
+                nested_count = len(driver.find_elements(By.TAG_NAME, "iframe"))
+            except Exception:
+                nested_count = 0
+            for j in range(nested_count):
+                paths.append([i, j])
+        for path in paths:
+            try:
+                _enter_frame_path(driver, path)
+            except Exception:
+                continue
+            modal, inner = _modal_in_current_context(driver)
+            if modal is not None:
+                label = "top" if not path else "frame" + ".".join(str(p) for p in path)
+                print(f"STO Detail Export modal mil gaya (context: {label}).")
+                return modal, inner
+        time.sleep(2)
+    return None, None
 
-    if not selected:
-        origin_input = first_visible(driver, [
-            (By.CSS_SELECTOR, "input[id*='origin'], input[name*='origin'], input[placeholder*='Origin'], input[aria-label*='Origin']"),
-        ])
-        if not origin_input:
-            for input_element in driver.find_elements(By.CSS_SELECTOR, "input"):
-                try:
-                    value = input_element.get_attribute("value") or ""
-                    if re.sub(r"[^a-z0-9]", "", value.lower()).endswith("sikanderabadfc1"):
-                        origin_input = input_element
-                        break
-                except Exception:
-                    pass
-        if not origin_input:
-            headers = driver.find_elements(By.XPATH, "//th")
-            for header in headers:
-                if "origin site" not in (header.text or "").strip().lower():
-                    continue
-                try:
-                    header_row = header.find_element(By.XPATH, "ancestor::tr[1]")
-                    header_cells = header_row.find_elements(By.XPATH, "./th | ./td")
-                    column_index = next(i for i, cell in enumerate(header_cells, start=1) if cell == header)
-                    filter_row = header_row.find_element(By.XPATH, "following-sibling::tr[1]")
-                    origin_input = filter_row.find_element(By.XPATH, f"./td[{column_index}]//input")
-                    break
-                except Exception:
-                    pass
-        if origin_input:
-            value = origin_input.get_attribute("value") or ""
-            if not re.sub(r"[^a-z0-9]", "", value.lower()).endswith("sikanderabadfc1"):
-                origin_input.clear()
-                origin_input.send_keys(ORIGIN_SITE)
-                time.sleep(0.5)
-                origin_input.send_keys(Keys.ARROWDOWN)
-                origin_input.send_keys(Keys.ENTER)
-                value = origin_input.get_attribute("value") or ""
-            if re.sub(r"[^a-z0-9]", "", value.lower()).endswith("sikanderabadfc1"):
-                selected = True
-                try:
-                    origin_input.send_keys(Keys.ENTER)
-                except Exception:
-                    pass
-    if not selected:
-        raise RuntimeError(f"Origin Site {ORIGIN_SITE} select confirm nahi hua.")
-    print(f"Origin Site selected: {ORIGIN_SITE}")
 
-    search = first_visible(driver, [(By.ID, "SearchBtn")]) or first_visible(driver, [
-        (By.XPATH, "//*[self::button or self::input or self::a][contains(translate(normalize-space(.) ,'SEARCH','search'),'search') or contains(translate(@value,'SEARCH','search'),'search') or contains(translate(@title,'SEARCH','search'),'search')]"),
-    ])
-    if not search:
-        raise RuntimeError("STO Order Enquiry Search button nahi mila.")
-    driver.execute_script("arguments[0].click();", search)
-    time.sleep(12)
+def dump_modal_debug(driver):
+    """Failure par screenshot + page-source save karein (workflow artifact me upload hoga)."""
+    try:
+        driver.switch_to.default_content()
+        driver.save_screenshot("sto_modal_debug.png")
+        with open("sto_modal_debug_top.html", "w", encoding="utf-8") as fh:
+            fh.write(driver.page_source)
+        for i in range(len(driver.find_elements(By.TAG_NAME, "iframe"))):
+            try:
+                _enter_frame_path(driver, [i])
+                with open(f"sto_modal_debug_frame{i}.html", "w", encoding="utf-8") as fh:
+                    fh.write(driver.page_source)
+            except Exception:
+                pass
+        driver.switch_to.default_content()
+        print("Debug files saved: sto_modal_debug.png / sto_modal_debug_*.html")
+    except Exception as exc:
+        print(f"Debug dump failed: {exc}")
 
 
 def request_sto_detail_export(driver, wait):
@@ -409,259 +112,67 @@ def request_sto_detail_export(driver, wait):
     time.sleep(5)
     switch_to_sto_frame(driver, wait)
     set_sto_filters(driver)
-
     detail = first_visible(driver, [(By.CSS_SELECTOR, "button[title='Detail Export']")])
     if not detail:
         detail = wait.until(EC.element_to_be_clickable((
             By.XPATH,
-            "//*[self::button or self::a or self::input][contains(translate(normalize-space(.) ,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@value,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@title,'DETAIL EXPORT','detail export'),'detail export')]"
+            "//*[self::button or self::a or self::input][contains(translate(normalize-space(.),'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@value,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@title,'DETAIL EXPORT','detail export'),'detail export')]"
         )))
     detail_handler = (detail.get_attribute("onclick") or "").strip()
     print(f"STO Detail Export handler: {detail_handler or '(none on button)'}")
-    if "detailexport" in detail_handler.lower():
-        # The inspected STO button uses onclick="doDetailExport();".
-        # Invoke that confirmed page handler directly so Selenium's click
-        # does not get swallowed by the legacy Vinculum toolbar markup.
+
+    def trigger_via_handler():
         driver.execute_script("doDetailExport();")
-    else:
+
+    def trigger_via_click():
         driver.execute_script("arguments[0].click();", detail)
-    time.sleep(3)
 
-    # Like the working Returns extractor, Vinculum opens this modal inside
-    # the active enquiry frame. Keep polling that frame first: an immediate
-    # lookup can race the modal render and falsely report that it is missing.
-    modal = None
-    modal_deadline = time.time() + 60
-    while time.time() < modal_deadline and modal is None:
-        try:
-            for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-                try:
-                    if (
-                        candidate.is_displayed()
-                        and "select field for export" in (candidate.text or "").lower()
-                    ):
-                        modal = candidate
-                        break
-                except Exception:
-                    continue
-            if modal is None:
-                time.sleep(1)
-        except Exception:
-            time.sleep(1)
+    if "detailexport" in detail_handler.lower():
+        first_trigger, second_trigger = trigger_via_handler, trigger_via_click
+    else:
+        first_trigger, second_trigger = trigger_via_click, trigger_via_handler
 
-    # Some Vinculum layouts attach the modal to the top-level document.
-    # Use that only as a fallback, after checking the current STO iframe.
+    first_trigger()
+    modal, inner = find_export_modal(driver, timeout=45)
     if modal is None:
+        print("Pehla trigger modal nahi khol paya; doosra trigger try kar rahe hain.")
         try:
-            driver.switch_to.default_content()
-            for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-                try:
-                    if (
-                        candidate.is_displayed()
-                        and "select field for export" in (candidate.text or "").lower()
-                    ):
-                        modal = candidate
-                        break
-                except Exception:
-                    continue
+            driver.switch_to.alert.accept()
         except Exception:
             pass
-
-    if modal is None:
-        visible_modals = []
         try:
-            visible_modals = [
-                (candidate.text or "")[:300]
-                for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content")
-                if candidate.is_displayed()
-            ]
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"STO Detail Export fields modal nahi mila. Visible modal snippets: {visible_modals}"
-        )
+            second_trigger()
+        except Exception as exc:
+            print(f"Second trigger warning: {exc}")
+        modal, inner = find_export_modal(driver, timeout=60)
+    if modal is None:
+        dump_modal_debug(driver)
+        raise RuntimeError("STO Detail Export fields modal nahi mila (debug files artifact me upload honge).")
 
-    frame = modal.find_element(By.CSS_SELECTOR, "iframe")
-    driver.switch_to.frame(frame)
-    time.sleep(1)
+    if inner is not None and inner.tag_name.lower() == "iframe":
+        driver.switch_to.frame(inner)
+        time.sleep(1)
+
     check_all = first_visible(driver, [(By.ID, "cb_dynamicFieldGrid")])
     if check_all and not check_all.is_selected():
         driver.execute_script("arguments[0].click();", check_all)
-    elif not check_all:
-        checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+    if not check_all:
+        checkboxes = [cb for cb in driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']") if cb.is_displayed()]
         if not checkboxes:
+            dump_modal_debug(driver)
             raise RuntimeError("STO export field checkboxes nahi mile.")
         for checkbox in checkboxes:
             if not checkbox.is_selected():
                 driver.execute_script("arguments[0].click();", checkbox)
-
-    export = wait.until(EC.element_to_be_clickable((
-        By.XPATH, "//button[@title='Export']"
-    )))
+    export = first_visible(driver, [(By.CSS_SELECTOR, "button[title='Export']")])
+    if not export:
+        export = first_visible(driver, [(
+            By.XPATH,
+            "//button[contains(translate(normalize-space(.),'EXPORT','export'),'export')] | //a[contains(translate(normalize-space(.),'EXPORT','export'),'export')]"
+        )])
+    if not export:
+        dump_modal_debug(driver)
+        raise RuntimeError("STO export modal me Export button nahi mila.")
     driver.execute_script("arguments[0].click();", export)
     driver.switch_to.default_content()
     print("STO Detail Export request submitted.")
-
-
-def switch_to_pending_report(driver):
-    driver.switch_to.default_content()
-    def has_grid():
-        try:
-            body = driver.find_element(By.TAG_NAME, "body").text.lower()
-            return ("pending report" in body or "report id" in body or "report names" in body) and bool(
-                driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
-            )
-        except Exception:
-            return False
-
-    deadline = time.time() + 20
-    while time.time() < deadline:
-        driver.switch_to.default_content()
-        if has_grid():
-            return True
-        for frame in driver.find_elements(By.TAG_NAME, "iframe"):
-            try:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(frame)
-                if has_grid():
-                    return True
-                for nested in driver.find_elements(By.TAG_NAME, "iframe"):
-                    try:
-                        driver.switch_to.frame(nested)
-                        if has_grid():
-                            return True
-                        driver.switch_to.parent_frame()
-                    except Exception:
-                        try:
-                            driver.switch_to.parent_frame()
-                        except Exception:
-                            pass
-            except Exception:
-                driver.switch_to.default_content()
-        time.sleep(1)
-    driver.switch_to.default_content()
-    return False
-
-
-def open_pending_report(driver):
-    driver.switch_to.default_content()
-    try:
-        driver.execute_script(
-            'openScreen("Pending Report", "pendingDisplay", "fa fa-fw fa-truck");'
-        )
-    except Exception as exc:
-        print(f"Pending Report openScreen warning: {exc}")
-    return switch_to_pending_report(driver)
-
-
-def parse_report_row(row):
-    cells = row.find_elements(By.TAG_NAME, "td")
-    texts = [c.text.strip() for c in cells]
-    status = next((t.upper() for t in texts if t.upper() in STATUS_WORDS), "")
-    report_id = next((t for t in texts if t.isdigit() and len(t) >= 4), "")
-    joined = "".join(texts).upper().replace(" ", "")
-    return texts, report_id, status, joined
-
-
-def wait_for_sto_report(driver, before_ids):
-    deadline = time.time() + 20 * 60
-    matched = None
-    while time.time() < deadline:
-        if not switch_to_pending_report(driver):
-            time.sleep(2)
-            continue
-        rows = driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow")
-        sto_rows = []
-        for row in rows:
-            texts, report_id, status, joined = parse_report_row(row)
-            if report_id and is_sto_report(joined):
-                sto_rows.append((row, report_id, status, texts))
-        if sto_rows:
-            fresh_rows = [item for item in sto_rows if item[1] not in before_ids]
-            if not fresh_rows:
-                time.sleep(10)
-                continue
-            row, report_id, status, texts = max(fresh_rows, key=lambda item: int(item[1]))
-            print(f"STO export report {report_id}: {status or 'processing'}")
-            if status == "SUCCESS":
-                matched = (row, report_id)
-                break
-            if status in {"ERROR", "FAILED"}:
-                raise RuntimeError("STO export failed: " + " | ".join(texts))
-        try:
-            driver.execute_script("if (typeof refreshGrid === 'function') refreshGrid();")
-        except Exception:
-            pass
-        time.sleep(10)
-
-    if not matched:
-        raise RuntimeError("STO Detail Export report 20 minutes mein SUCCESS nahi hua.")
-    return matched
-
-
-def download_sto_report(driver, row, report_id):
-    files_before = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
-    download_control = None
-    exact_controls = row.find_elements(By.CSS_SELECTOR, "label[onclick*='downloadReport']")
-    for element in exact_controls or row.find_elements(
-        By.XPATH, ".//a | .//button | .//img | .//i | .//span"
-    ):
-        meta = " ".join([
-            element.text or "",
-            element.get_attribute("title") or "",
-            element.get_attribute("aria-label") or "",
-            element.get_attribute("alt") or "",
-            element.get_attribute("class") or "",
-        ]).lower()
-        onclick = (element.get_attribute("onclick") or "").lower()
-        if "downloadreport" in onclick or "download" in meta:
-            download_control = element
-            break
-    if not download_control:
-        raise RuntimeError(f"STO report {report_id} ka download control nahi mila.")
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", download_control)
-    try:
-        download_control.click()
-    except Exception:
-        driver.execute_script("arguments[0].click();", download_control)
-
-    downloaded = wait_for_download(DOWNLOAD_FOLDER, timeout=180, existing_files=files_before)
-    if not downloaded:
-        raise RuntimeError("STO report Excel download timeout ho gaya.")
-    shutil.copy2(downloaded, OUTPUT_FILE)
-    with open(META_FILE, "w", encoding="utf-8") as meta:
-        json.dump({"generatedAt": datetime.now(timezone.utc).isoformat()}, meta)
-    print(f"SUCCESS: STO report {report_id} saved to {OUTPUT_FILE}")
-
-
-def main():
-    if not USERNAME or not PASSWORD:
-        raise RuntimeError("VINCULUM_USERNAME/PASSWORD secrets available nahi hain.")
-    driver = build_driver()
-    wait = WebDriverWait(driver, 40)
-    try:
-        login(driver, wait)
-        # Open Pending Report before requesting export, as the proven Returns
-        # extractor does, so the new STO report can be matched by its ID.
-        if not open_pending_report(driver):
-            raise RuntimeError("Export se pehle Pending Report screen/grid nahi mila; purane report ko naya samajhne se bachne ke liye export roka.")
-        before_ids = set()
-        if switch_to_pending_report(driver):
-            for row in driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow"):
-                _, report_id, _, joined = parse_report_row(row)
-                if report_id and is_sto_report(joined):
-                    before_ids.add(report_id)
-        driver.switch_to.default_content()
-        request_sto_detail_export(driver, wait)
-        if not open_pending_report(driver):
-            raise RuntimeError("STO export ke baad Pending Report screen/grid nahi mila.")
-        row, report_id = wait_for_sto_report(driver, before_ids)
-        download_sto_report(driver, row, report_id)
-    except Exception:
-        raise
-    finally:
-        driver.quit()
-
-
-if __name__ == "__main__":
-    main()
