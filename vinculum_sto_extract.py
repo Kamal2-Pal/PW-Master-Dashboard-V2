@@ -416,16 +416,70 @@ def request_sto_detail_export(driver, wait):
             By.XPATH,
             "//*[self::button or self::a or self::input][contains(translate(normalize-space(.) ,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@value,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@title,'DETAIL EXPORT','detail export'),'detail export')]"
         )))
-    driver.execute_script("arguments[0].click();", detail)
-    time.sleep(2)
+    detail_handler = (detail.get_attribute("onclick") or "").strip()
+    print(f"STO Detail Export handler: {detail_handler or '(none on button)'}")
+    if "detailexport" in detail_handler.lower():
+        # The inspected STO button uses onclick="doDetailExport();".
+        # Invoke that confirmed page handler directly so Selenium's click
+        # does not get swallowed by the legacy Vinculum toolbar markup.
+        driver.execute_script("doDetailExport();")
+    else:
+        driver.execute_script("arguments[0].click();", detail)
+    time.sleep(3)
 
+    # Like the working Returns extractor, Vinculum opens this modal inside
+    # the active enquiry frame. Keep polling that frame first: an immediate
+    # lookup can race the modal render and falsely report that it is missing.
     modal = None
-    for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-        if candidate.is_displayed() and "Select Field For Export" in candidate.text:
-            modal = candidate
-            break
+    modal_deadline = time.time() + 60
+    while time.time() < modal_deadline and modal is None:
+        try:
+            for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
+                try:
+                    if (
+                        candidate.is_displayed()
+                        and "select field for export" in (candidate.text or "").lower()
+                    ):
+                        modal = candidate
+                        break
+                except Exception:
+                    continue
+            if modal is None:
+                time.sleep(1)
+        except Exception:
+            time.sleep(1)
+
+    # Some Vinculum layouts attach the modal to the top-level document.
+    # Use that only as a fallback, after checking the current STO iframe.
     if modal is None:
-        raise RuntimeError("STO Detail Export fields modal nahi mila.")
+        try:
+            driver.switch_to.default_content()
+            for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
+                try:
+                    if (
+                        candidate.is_displayed()
+                        and "select field for export" in (candidate.text or "").lower()
+                    ):
+                        modal = candidate
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if modal is None:
+        visible_modals = []
+        try:
+            visible_modals = [
+                (candidate.text or "")[:300]
+                for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content")
+                if candidate.is_displayed()
+            ]
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"STO Detail Export fields modal nahi mila. Visible modal snippets: {visible_modals}"
+        )
 
     frame = modal.find_element(By.CSS_SELECTOR, "iframe")
     driver.switch_to.frame(frame)
