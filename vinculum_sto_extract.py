@@ -33,6 +33,13 @@ ORIGIN_SITE = "Sikanderabad_FC1"
 STATUS_WORDS = {"SUCCESS", "ERROR", "WIP", "PENDING", "FAILED", "PROCESSING"}
 
 
+def is_sto_report(joined_text):
+    """Report name observed in Vinculum is generateDetailSTO..., not ...EXPORT."""
+    return any(marker in joined_text for marker in (
+        "GENERATEDETAILST", "STOORDERENQUIRY", "STOEXPORT",
+    ))
+
+
 def first_visible(driver, selectors):
     for by, selector in selectors:
         try:
@@ -104,7 +111,7 @@ def switch_to_sto_frame(driver, wait):
                 for el in driver.find_elements(By.XPATH, "//th")
             ]
             has_date = any(value in {"sto date", "sto date range"} for value in headers)
-            has_origin = any("origin site" == value for value in headers)
+            has_origin = any(value == "origin site" for value in headers)
             return has_date and has_origin and bool(
                 driver.find_elements(By.CSS_SELECTOR, "input, select")
             )
@@ -269,7 +276,16 @@ def set_sto_filters(driver):
         print(f"STO Date selected: {start_text} to {end_text}")
 
     origin_select = None
+    # The inspected page uses Select2: its visible widget is
+    # #select2-gs_fromSiteLoc-container and its backing <select> is
+    # #gs_fromSiteLoc (which may be hidden by Select2).
+    try:
+        origin_select = driver.find_element(By.ID, "gs_fromSiteLoc")
+    except Exception:
+        pass
     for select in driver.find_elements(By.TAG_NAME, "select"):
+        if origin_select is not None:
+            break
         if not select.is_displayed():
             continue
         try:
@@ -306,6 +322,29 @@ def set_sto_filters(driver):
           s.dispatchEvent(new Event('change', {bubbles:true}));
           return Array.from(s.selectedOptions).some(x => x.text.trim().toLowerCase().replace(/[^a-z0-9]/g, '').endsWith(wanted));
         """, origin_select, ORIGIN_SITE)
+
+    if not selected:
+        try:
+            container = driver.find_element(By.ID, "select2-gs_fromSiteLoc-container")
+            driver.execute_script("arguments[0].click();", container)
+            time.sleep(0.3)
+            search_box = first_visible(driver, [
+                (By.CSS_SELECTOR, "input.select2-search__field"),
+            ])
+            if search_box:
+                search_box.send_keys(ORIGIN_SITE)
+                time.sleep(0.5)
+            for option in driver.find_elements(By.CSS_SELECTOR, ".select2-results__option"):
+                text = re.sub(r"[^a-z0-9]", "", (option.text or "").lower())
+                if option.is_displayed() and text.endswith("sikanderabadfc1"):
+                    driver.execute_script("arguments[0].click();", option)
+                    time.sleep(0.3)
+                    value = (driver.find_element(By.ID, "select2-gs_fromSiteLoc-container").text or "")
+                    if re.sub(r"[^a-z0-9]", "", value.lower()).endswith("sikanderabadfc1"):
+                        selected = True
+                    break
+        except Exception:
+            pass
 
     if not selected:
         origin_input = first_visible(driver, [
@@ -353,7 +392,7 @@ def set_sto_filters(driver):
         raise RuntimeError(f"Origin Site {ORIGIN_SITE} select confirm nahi hua.")
     print(f"Origin Site selected: {ORIGIN_SITE}")
 
-    search = first_visible(driver, [
+    search = first_visible(driver, [(By.ID, "SearchBtn")]) or first_visible(driver, [
         (By.XPATH, "//*[self::button or self::input or self::a][contains(translate(normalize-space(.) ,'SEARCH','search'),'search') or contains(translate(@value,'SEARCH','search'),'search') or contains(translate(@title,'SEARCH','search'),'search')]"),
     ])
     if not search:
@@ -365,16 +404,18 @@ def set_sto_filters(driver):
 def request_sto_detail_export(driver, wait):
     driver.switch_to.default_content()
     driver.execute_script(
-        'openScreen("STO Order Enquiry", "stoOrderEnquiryBS", "fa fa-arrow-circle-right");'
+        'openScreen("STO Order Enquiry", "stockTransferEnquiryActionBS", "fa fa-arrow-circle-right");'
     )
     time.sleep(5)
     switch_to_sto_frame(driver, wait)
     set_sto_filters(driver)
 
-    detail = wait.until(EC.element_to_be_clickable((
-        By.XPATH,
-        "//*[self::button or self::a or self::input][contains(translate(normalize-space(.) ,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@value,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@title,'DETAIL EXPORT','detail export'),'detail export')]"
-    )))
+    detail = first_visible(driver, [(By.CSS_SELECTOR, "button[title='Detail Export']")])
+    if not detail:
+        detail = wait.until(EC.element_to_be_clickable((
+            By.XPATH,
+            "//*[self::button or self::a or self::input][contains(translate(normalize-space(.) ,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@value,'DETAIL EXPORT','detail export'),'detail export') or contains(translate(@title,'DETAIL EXPORT','detail export'),'detail export')]"
+        )))
     driver.execute_script("arguments[0].click();", detail)
     time.sleep(2)
 
@@ -479,7 +520,7 @@ def wait_for_sto_report(driver, before_ids):
         sto_rows = []
         for row in rows:
             texts, report_id, status, joined = parse_report_row(row)
-            if report_id and "STO" in joined and "EXPORT" in joined:
+            if report_id and is_sto_report(joined):
                 sto_rows.append((row, report_id, status, texts))
         if sto_rows:
             fresh_rows = [item for item in sto_rows if item[1] not in before_ids]
@@ -507,7 +548,8 @@ def wait_for_sto_report(driver, before_ids):
 def download_sto_report(driver, row, report_id):
     files_before = set(glob.glob(os.path.join(DOWNLOAD_FOLDER, "*")))
     download_control = None
-    for element in row.find_elements(
+    exact_controls = row.find_elements(By.CSS_SELECTOR, "label[onclick*='downloadReport']")
+    for element in exact_controls or row.find_elements(
         By.XPATH, ".//a | .//button | .//img | .//i | .//span"
     ):
         meta = " ".join([
@@ -517,7 +559,8 @@ def download_sto_report(driver, row, report_id):
             element.get_attribute("alt") or "",
             element.get_attribute("class") or "",
         ]).lower()
-        if "downloadreport" in meta or "download" in meta:
+        onclick = (element.get_attribute("onclick") or "").lower()
+        if "downloadreport" in onclick or "download" in meta:
             download_control = element
             break
     if not download_control:
@@ -552,7 +595,7 @@ def main():
         if switch_to_pending_report(driver):
             for row in driver.find_elements(By.CSS_SELECTOR, "tr.jqgrow"):
                 _, report_id, _, joined = parse_report_row(row)
-                if report_id and "STO" in joined and "EXPORT" in joined:
+                if report_id and is_sto_report(joined):
                     before_ids.add(report_id)
         driver.switch_to.default_content()
         request_sto_detail_export(driver, wait)
