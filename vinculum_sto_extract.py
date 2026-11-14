@@ -94,32 +94,71 @@ def login(driver, wait):
 
 
 def switch_to_sto_frame(driver, wait):
-    driver.switch_to.default_content()
-    try:
-        frame = wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, "iframe[src*='stoOrderEnquiry']")
-        ))
-        driver.switch_to.frame(frame)
-        return
-    except Exception:
-        pass
-
     deadline = time.time() + 30
-    while time.time() < deadline:
-        driver.switch_to.default_content()
-        for frame in driver.find_elements(By.TAG_NAME, "iframe"):
-            if not frame.is_displayed():
-                continue
+
+    def has_sto_filter_controls():
+        """Only accept the frame that owns the STO filter grid, not its shell."""
+        try:
+            headers = [
+                re.sub(r"\s+", " ", (el.text or "").strip().lower())
+                for el in driver.find_elements(By.XPATH, "//th")
+            ]
+            has_date = any(value in {"sto date", "sto date range"} for value in headers)
+            has_origin = any("origin site" == value for value in headers)
+            return has_date and has_origin and bool(
+                driver.find_elements(By.CSS_SELECTOR, "input, select")
+            )
+        except Exception:
+            return False
+
+    def find_in_context(depth=0):
+        if has_sto_filter_controls():
+            return True
+        if depth >= 3:
+            return False
+        try:
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
+        except Exception:
+            frames = []
+        for frame in frames:
+            entered_frame = False
             try:
+                # Vinculum nests the enquiry grid under a shell iframe on some
+                # sessions. Search all child frames, including hidden shells.
                 driver.switch_to.frame(frame)
-                body = driver.find_element(By.TAG_NAME, "body").text.lower()
-                if "sto order enquiry" in body or "origin site" in body:
-                    return
+                entered_frame = True
+                if find_in_context(depth + 1):
+                    return True  # leave Selenium in the frame with the filters
             except Exception:
                 pass
-            driver.switch_to.default_content()
+            if entered_frame:
+                try:
+                    driver.switch_to.parent_frame()
+                except Exception:
+                    driver.switch_to.default_content()
+        return False
+
+    while time.time() < deadline:
+        driver.switch_to.default_content()
+        if find_in_context():
+            print("STO Date aur Origin Site filters wala iframe mil gaya.")
+            return
         time.sleep(1)
-    raise RuntimeError("STO Order Enquiry iframe nahi mila.")
+    driver.switch_to.default_content()
+    frame_debug = []
+    try:
+        for frame in driver.find_elements(By.TAG_NAME, "iframe"):
+            frame_debug.append({
+                "src": frame.get_attribute("src"),
+                "title": frame.get_attribute("title"),
+                "name": frame.get_attribute("name"),
+            })
+    except Exception:
+        pass
+    raise RuntimeError(
+        "STO Date/Origin Site filter grid iframe nahi mila; "
+        f"top-level iframes: {frame_debug}"
+    )
 
 
 def set_sto_filters(driver):
