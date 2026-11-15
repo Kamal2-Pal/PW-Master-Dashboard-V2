@@ -420,87 +420,14 @@ def request_sto_detail_export(driver, wait):
     print(f"STO Detail Export handler: {detail_handler or '(none on button)'}")
     if "detailexport" in detail_handler.lower():
         # The inspected STO button uses onclick="doDetailExport();".
-        # Invoke that confirmed page handler directly so Selenium's click
-        # does not get swallowed by the legacy Vinculum toolbar markup.
+        # The inspected Vinculum flow submits the detail export and moves
+        # directly to Pending Report; it does not show a field-selection modal.
         driver.execute_script("doDetailExport();")
     else:
         driver.execute_script("arguments[0].click();", detail)
-    time.sleep(3)
-
-    # Like the working Returns extractor, Vinculum opens this modal inside
-    # the active enquiry frame. Keep polling that frame first: an immediate
-    # lookup can race the modal render and falsely report that it is missing.
-    modal = None
-    modal_deadline = time.time() + 60
-    while time.time() < modal_deadline and modal is None:
-        try:
-            for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-                try:
-                    if (
-                        candidate.is_displayed()
-                        and "select field for export" in (candidate.text or "").lower()
-                    ):
-                        modal = candidate
-                        break
-                except Exception:
-                    continue
-            if modal is None:
-                time.sleep(1)
-        except Exception:
-            time.sleep(1)
-
-    # Some Vinculum layouts attach the modal to the top-level document.
-    # Use that only as a fallback, after checking the current STO iframe.
-    if modal is None:
-        try:
-            driver.switch_to.default_content()
-            for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content"):
-                try:
-                    if (
-                        candidate.is_displayed()
-                        and "select field for export" in (candidate.text or "").lower()
-                    ):
-                        modal = candidate
-                        break
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-    if modal is None:
-        visible_modals = []
-        try:
-            visible_modals = [
-                (candidate.text or "")[:300]
-                for candidate in driver.find_elements(By.CSS_SELECTOR, "div.modal-content")
-                if candidate.is_displayed()
-            ]
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"STO Detail Export fields modal nahi mila. Visible modal snippets: {visible_modals}"
-        )
-
-    frame = modal.find_element(By.CSS_SELECTOR, "iframe")
-    driver.switch_to.frame(frame)
-    time.sleep(1)
-    check_all = first_visible(driver, [(By.ID, "cb_dynamicFieldGrid")])
-    if check_all and not check_all.is_selected():
-        driver.execute_script("arguments[0].click();", check_all)
-    elif not check_all:
-        checkboxes = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
-        if not checkboxes:
-            raise RuntimeError("STO export field checkboxes nahi mile.")
-        for checkbox in checkboxes:
-            if not checkbox.is_selected():
-                driver.execute_script("arguments[0].click();", checkbox)
-
-    export = wait.until(EC.element_to_be_clickable((
-        By.XPATH, "//button[@title='Export']"
-    )))
-    driver.execute_script("arguments[0].click();", export)
+    time.sleep(2)
     driver.switch_to.default_content()
-    print("STO Detail Export request submitted.")
+    print("STO Detail Export requested; waiting for Vinculum Pending Report.")
 
 
 def switch_to_pending_report(driver):
@@ -545,6 +472,10 @@ def switch_to_pending_report(driver):
 
 def open_pending_report(driver):
     driver.switch_to.default_content()
+    # Detail Export can navigate directly to this screen. Reuse that page
+    # instead of reopening it and potentially losing the newly created row.
+    if switch_to_pending_report(driver):
+        return True
     try:
         driver.execute_script(
             'openScreen("Pending Report", "pendingDisplay", "fa fa-fw fa-truck");'
@@ -641,8 +572,7 @@ def main():
     wait = WebDriverWait(driver, 40)
     try:
         login(driver, wait)
-        # Open Pending Report before requesting export, as the proven Returns
-        # extractor does, so the new STO report can be matched by its ID.
+        # Capture existing STO report IDs before Detail Export creates a new row.
         if not open_pending_report(driver):
             raise RuntimeError("Export se pehle Pending Report screen/grid nahi mila; purane report ko naya samajhne se bachne ke liye export roka.")
         before_ids = set()
